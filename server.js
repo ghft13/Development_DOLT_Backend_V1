@@ -26,6 +26,7 @@ dotenv.config();
 const app = express();
 const allowedOrigins = [
   "http://localhost:3000",
+  "https://deploy-dolt.netlify.app"
 ];
 
 const cookieParser = require("cookie-parser");
