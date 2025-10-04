@@ -1,202 +1,91 @@
 const express = require("express");
-const dotenv = require("dotenv");
-const path = require("path");
+const paypal = require("@paypal/checkout-server-sdk");
+const paypalClient = require("../../Utils/paypalClient");
 
-dotenv.config();
 const router = express.Router();
 
-const { PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET } = process.env;
-const base = "https://api-m.sandbox.paypal.com";
+// ✅ Create PayPal order
+router.post("/create-order", async (req, res) => {
+  const { amount } = req.body;
 
-// Dynamically import `node-fetch`
-const fetch = (...args) =>
-  import("node-fetch").then(({ default: fetch }) => fetch(...args));
-
-/**
- * Generate PayPal Access Token
- */
-const generateAccessToken = async () => {
-  try {
-    if (!PAYPAL_CLIENT_ID || !PAYPAL_CLIENT_SECRET) {
-      throw new Error("MISSING_API_CREDENTIALS");
-    }
-
-    const auth = Buffer.from(
-      `${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`
-    ).toString("base64");
-
-    const response = await fetch(`${base}/v1/oauth2/token`, {
-      method: "POST",
-      body: "grant_type=client_credentials",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(`Error generating token: ${JSON.stringify(data)}`);
-    }
-
-    return data.access_token;
-  } catch (error) {
-  //  console.error("❌ Failed to generate Access Token:", error.message);
-    throw error;
-  }
-};
-
-/**
- * Create PayPal Order
- */
-
-const createOrder = async (cart) => {
-  try {
-    const accessToken = await generateAccessToken();
-    const url = `${base}/v2/checkout/orders`;
-   
-
-   const total = Array.isArray(cart)
-  ? cart.reduce(
-      (sum, item) =>
-        sum + parseFloat(item.price || 0) * (parseInt(item.quantity) || 1),
-      0
-    )
-  : parseFloat(cart.price || 0);
-
-    const value = isNaN(total) ? "0.00" : total.toFixed(2)
-    const totalvalue=value*cart.quantity
   
-    const payload = {
-      intent: "CAPTURE",
-      purchase_units: [
-        {
-          amount: {
-            currency_code: "USD",
-            value: value, // Modify dynamically if needed
-          },
+
+  if (!amount || isNaN(amount) || Number(amount) <= 0) {
+    // console.error("❌ Invalid amount:", amount);
+    return res.status(400).json({ message: "Invalid amount" });
+  }
+
+  const request = new paypal.orders.OrdersCreateRequest();
+  request.prefer("return=representation");
+  request.requestBody({
+    intent: "CAPTURE",
+    purchase_units: [
+      {
+        amount: { 
+          currency_code: "USD", 
+          value: parseFloat(amount).toFixed(2) 
         },
-      ],
-    };
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify(payload),
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-  //  console.error("❌ Failed to create order:", error.message);
-    throw error;
-  }
-};
-
-/**
- * Get PayPal Order Details (to check status before capturing)
- */
-const getOrderDetails = async (orderID) => {
-  try {
-    const accessToken = await generateAccessToken();
-    const url = `${base}/v2/checkout/orders/${orderID}`;
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    throw error;
-  }
-};
-
-/**
- * Capture PayPal Order
- */
-const captureOrder = async (orderID) => {
-  try {
-    const accessToken = await generateAccessToken();
-    const url = `${base}/v2/checkout/orders/${orderID}/capture`;
-
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-    });
-
-    return handleResponse(response);
-  } catch (error) {
-    throw error;
-  }
-};
-
-/**
- * Handle API Response
- */
-const handleResponse = async (response) => {
-  try {
-    const jsonResponse = await response.json();
-    if (!response.ok) {
-      throw new Error(`API Error: ${JSON.stringify(jsonResponse)}`);
+    ],
+    application_context: {
+      brand_name: "Your Business Name",
+      landing_page: "BILLING",
+      user_action: "PAY_NOW",
+      return_url: "http://localhost:3000/success",
+      cancel_url: "http://localhost:3000/cancel"
     }
-    return { jsonResponse, httpStatusCode: response.status };
+  });
+
+  try {
+    const order = await paypalClient.execute(request);
+    // console.log("✅ Order created successfully:", order.result.id);
+    // console.log("📦 Order details:", JSON.stringify(order.result, null, 2));
+    res.json({ id: order.result.id });
   } catch (err) {
-    throw err;
-  }
-};
-
-/**
- * Route: Create Order
- */
-router.post("/orders", async (req, res) => {
-  try {
-    const { cart } = req.body;
-
-    const { jsonResponse, httpStatusCode } = await createOrder(cart);
-    res.status(httpStatusCode).json(jsonResponse);
-  } catch (error) {
-    console.error("❌ Order creation failed:", error.message);
-    res.status(500).json({ error: "Failed to create order." });
+    console.error("❌ PayPal Create Error:", err.message);
+    console.error("Error details:", err);
+    res.status(500).json({ 
+      message: "Error creating PayPal order", 
+      error: err.message 
+    });
   }
 });
 
-/**
- * Route: Capture Order (with order status check)
- */
-router.post("/orders/:orderID/capture", async (req, res) => {
-  try {
-    const { orderID } = req.params;
-    // Fetch order details to check status
-    const orderDetails = await getOrderDetails(orderID);
-    if (orderDetails.jsonResponse.status !== "APPROVED") {
-      return res
-        .status(400)
-        .json({ error: "Order is not approved for capture." });
-    }
+// ✅ Capture PayPal order
+router.post("/capture-order", async (req, res) => {
+  const { orderId, uid } = req.body;
 
-    // Capture the order
-    const { jsonResponse, httpStatusCode } = await captureOrder(orderID);
-    res.status(httpStatusCode).json(jsonResponse);
-  } catch (error) {
-   // console.error("❌ Order capture failed:", error.message);
-    res.status(500).json({ error: "Failed to capture order." });
+  // console.log("📨 Received capture-order request:", { orderId, uid });
+
+  if (!orderId) {
+    console.error("❌ Missing orderId");
+    return res.status(400).json({ message: "Missing orderId" });
   }
-});
 
-/**
- * Serve Checkout Page
- */
-router.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../Front/public/checkout.html"));
+  const request = new paypal.orders.OrdersCaptureRequest(orderId);
+  request.requestBody({});
+
+  try {
+    const capture = await paypalClient.execute(request);
+    // console.log("✅ Payment captured successfully!");
+    // console.log("💰 Capture details:", JSON.stringify(capture.result, null, 2));
+    
+    // TODO: Save payment to database using uid
+    // console.log("💾 TODO: Save to database for user:", uid);
+    
+    res.json({ 
+      status: "success", 
+      capture: capture.result,
+      message: "Payment captured successfully"
+    });
+  } catch (err) {
+    console.error("❌ PayPal Capture Error:", err.message);
+    console.error("Error details:", err);
+    res.status(500).json({ 
+      message: "Error capturing PayPal order", 
+      error: err.message 
+    });
+  }
 });
 
 module.exports = router;
