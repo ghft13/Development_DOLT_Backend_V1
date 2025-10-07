@@ -1,80 +1,86 @@
 const { db, admin } = require("../../Config/FireBase");
 
 const createBooking = async (req, res) => {
-  const {
-    userId,
-    serviceType,
-    date,
-    time,
-    serviceAddress,
-    additionalDetails,
-    status,
-    homeownername,
-    useremail,
-    userMobile,
-  } = req.body;
-  const { serviceAmount } = req.body; // Add this line to extract serviceAmount
-
-  if (!userId || !serviceType || !date || !time || !serviceAddress) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
   try {
-    // Fetch service price from database
-    let finalServiceAmount = 0;
-    const serviceSnapshot = await db
-      .collection("services")
-      .where("name", "==", serviceType)
-      .limit(1)
-      .get();
-    if (!serviceSnapshot.empty) {
-      finalServiceAmount = serviceSnapshot.docs[0].data().price || 0;
+    const {
+      id,
+      user_id,
+      provider_id,
+      service_id,
+      status,
+      scheduled_date,
+      completed_date,
+      address,
+      latitude,
+      longitude,
+      notes,
+      total_amount,
+      currency,
+      created_at,
+      updated_at,
+      service_title,
+      service_description,
+      user_name,
+      user_email,
+    } = req.body;
+
+    // ✅ Validate required fields
+    if (!user_id || !service_id || !scheduled_date || !address) {
+      return res.status(400).json({ message: "All fields are required" });
     }
-    // If serviceAmount is provided in body, use it, else use fetched price
-    const newDocRef = db.collection("bookings").doc(); // generate new doc id
+
+    // ✅ Create a new booking document
+    const newDocRef = db.collection("bookings").doc(id || undefined); // use given id if provided
+
     const bookingData = {
-      Bookingid: newDocRef.id,
-      isBooked: false,
-      isCancelled: false,
-      homeownername: homeownername,
-      useremail: useremail,
-      userMobile: userMobile,
-      userId,
-      service: serviceType,
-      date,
-      time,
-      address: serviceAddress,
-      additionalDetails: additionalDetails || "",
+      bookingId: newDocRef.id,
+      user_id,
+      provider_id: provider_id || null,
+      service_id,
       status: status || "pending",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      serviceAmount: serviceAmount || finalServiceAmount || 0, // Use DB price if not provided
+      scheduled_date,
+      completed_date: completed_date || null,
+      address,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      notes: notes || "",
+      total_amount: total_amount || 0,
+      currency: currency || "USD",
+      created_at: created_at
+        ? new Date(created_at)
+        : admin.firestore.FieldValue.serverTimestamp(),
+      updated_at: updated_at
+        ? new Date(updated_at)
+        : admin.firestore.FieldValue.serverTimestamp(),
+      service_title,
+      service_description,
+      user_name,
+      user_email,
+      isBooked: true,
+      isCancelled: false,
     };
 
+    // ✅ Store booking in Firestore
     await newDocRef.set(bookingData);
 
-    // Determine the user's collection (homeowners or serviceProviders)
-    const homeownerDoc = await db.collection("homeowners").doc(userId).get();
-    const userCollection = homeownerDoc.exists
-      ? "homeowners"
-      : "serviceProviders";
-
-    // Update the user document with the booking ID
+    // ✅ Add booking reference to the user document
     await db
-      .collection(userCollection)
-      .doc(userId)
+      .collection("homeowners")
+      .doc(user_id)
       .update({
         bookingIds: admin.firestore.FieldValue.arrayUnion(newDocRef.id),
       });
 
-  
     res.status(201).json({
       message: "Booking created successfully",
       booking: bookingData,
     });
   } catch (error) {
+    console.error("Error creating booking:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 const getBookingdata = async (req, res) => {
   try {
