@@ -77,14 +77,14 @@ const registerNewUser = async (req, res) => {
     //   path: "/",
     //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     // });
-
+res.cookie("refreshToken", refreshToken, {
      httpOnly: true,                 // Protects from JS access
   secure: true,                   // Must be true in production (only sent via HTTPS)
   sameSite: "none",               // Required for cross-site cookies
   domain: ".netlify.app",         // ✅ allows access across your Netlify subdomains
   path: "/",                      // Valid for entire domain
   maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-
+});
     // ✅ Send response
     res.status(201).json({
       message: "User registered successfully",
