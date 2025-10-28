@@ -24,6 +24,8 @@ const createBooking = async (req, res) => {
       user_email,
     } = req.body;
 
+
+    // console.log("Creating booking with data:", req.body);
     // ✅ Validate required fields
     if (!user_id || !service_id || !scheduled_date || !address) {
       return res.status(400).json({ message: "All fields are required" });
@@ -83,6 +85,7 @@ const createBooking = async (req, res) => {
 
 
 const getBookingdata = async (req, res) => {
+  // console.log(req.body)
   try {
     const { userId } = req.query; // ✅ fixed
 
@@ -285,7 +288,7 @@ const CancelBooking = async (req, res) => {
       canceledAt: new Date().toISOString(), // optional: track when it was canceled
     });
 
-    console.log("Booking canceled successfully:", id);
+    // console.log("Booking canceled successfully:", id);
     res.status(200).json({ message: "Booking successfully canceled" });
   } catch (error) {
     console.error("Error canceling booking:", error);

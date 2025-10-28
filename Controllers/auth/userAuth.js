@@ -6,42 +6,41 @@ const registerNewUser = async (req, res) => {
   const { fullName, email, password, phone, role } = req.body;
 
   try {
-    // Validate role
+    // ✅ Validate required fields
+    if (!fullName || !email || !password || !phone || !role) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
+
+    // ✅ Validate role
     if (!["user", "provider"].includes(role)) {
       return res.status(400).json({ message: "Invalid role" });
     }
 
-    // 🔍 Check if email or phone already exists in Firestore
-    const userCollection = role === "user" ? "homeowners" : "serviceProviders";
-    const otherCollection = role === "user" ? "serviceProviders" : "homeowners";
+    // ✅ Determine collection
+    const userCollection = role === "user" ? "users" : "serviceProviders";
+    const otherCollection = role === "user" ? "serviceProviders" : "users";
 
     const userRef = db.collection(userCollection);
     const otherRef = db.collection(otherCollection);
 
-    // Check in current collection
-    const snapshotUser = await userRef
-      .where("email", "==", email)
-      .get();
-    const snapshotUserPhone = await userRef
-      .where("phone", "==", phone)
-      .get();
+    // ✅ Check if email or phone already exists
+    const checks = await Promise.all([
+      userRef.where("email", "==", email).get(),
+      userRef.where("phone", "==", phone).get(),
+      otherRef.where("email", "==", email).get(),
+      otherRef.where("phone", "==", phone).get(),
+    ]);
 
-    // Check in other collection
-    const snapshotOtherEmail = await otherRef
-      .where("email", "==", email)
-      .get();
-    const snapshotOtherPhone = await otherRef
-      .where("phone", "==", phone)
-      .get();
-
-    if (!snapshotUser.empty || !snapshotUserPhone.empty || !snapshotOtherEmail.empty || !snapshotOtherPhone.empty) {
-      return res.status(400).json({ message: "Email or phone number already exists" });
+    if (checks.some((snap) => !snap.empty)) {
+      return res
+        .status(400)
+        .json({ message: "Email or phone number already exists" });
     }
 
     // ✅ Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Prepare user data
+    // ✅ Prepare user data
     let newUserData = {
       fullName,
       email,
@@ -53,7 +52,7 @@ const registerNewUser = async (req, res) => {
 
     if (role === "user") {
       newUserData.orderIds = [];
-    } else if (role === "provider") {
+    } else {
       newUserData.totalClients = 0;
       newUserData.totalAppointments = 0;
       newUserData.earnings = 0;
@@ -63,104 +62,154 @@ const registerNewUser = async (req, res) => {
       newUserData.professions = [];
     }
 
-    // Add user to Firestore
+    // ✅ Save to Firestore
     const docRef = await db.collection(userCollection).add(newUserData);
 
-    // Generate tokens
+    // ✅ Generate JWT tokens
     const { token, refreshToken } = generateTokens(docRef.id, role);
 
-    // Set refresh token in HTTP-only cookie
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    // ✅ Send Refresh Token cookie
+    // res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: false, // change to true in production (requires https)
+    //   sameSite: "lax", // use "none" only with https
+    //   domain: "api.d0lt.local", // your dev domain
+    //   path: "/",
+    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    // });
 
+     httpOnly: true,                 // Protects from JS access
+  secure: true,                   // Must be true in production (only sent via HTTPS)
+  sameSite: "none",               // Required for cross-site cookies
+  domain: ".netlify.app",         // ✅ allows access across your Netlify subdomains
+  path: "/",                      // Valid for entire domain
+  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+
+    // ✅ Send response
     res.status(201).json({
       message: "User registered successfully",
       user: {
         id: docRef.id,
         ...newUserData,
-        password: undefined, // hide password in response
+        password: undefined, // hide password
       },
       token,
       role,
     });
-
+ 
   } catch (error) {
     console.error("Registration error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
-
 const loginUserAccount = async (req, res) => {
-  const { email, password, role } = req.body;
+  const { email, password } = req.body;
 
   try {
-    if (!email || !password || !role) {
-      return res.status(400).json({ message: "Email, password, and role are required" });
+    if (!email || !password) {
+      return res
+        .status(400)
+        .json({ message: "Email and password are required" });
     }
 
-    // Determine Firestore collection
-    const collection =
-      role === "user"
-        ? "homeowners"
-        : role === "provider"
-        ? "serviceProviders"
-        : null;
+    let userDoc = null;
+    let userData = null;
+    let role = "";
 
-    if (!collection) {
-      return res.status(400).json({ message: "Invalid role provided" });
+    // 🔍 Check users collection (previously homeowners)
+    const userSnapshot = await db
+      .collection("users")
+      .where("email", "==", email)
+      .get();
+
+    if (!userSnapshot.empty) {
+      userDoc = userSnapshot.docs[0];
+      userData = userDoc.data();
+      role = "user";
+    } else {
+      // 🔍 Check service providers
+      const providerSnapshot = await db
+        .collection("serviceProviders")
+        .where("email", "==", email)
+        .get();
+
+      if (!providerSnapshot.empty) {
+        userDoc = providerSnapshot.docs[0];
+        userData = userDoc.data();
+        role = "provider";
+      } else {
+        // 🔍 Check admins
+        const adminSnapshot = await db
+          .collection("admins")
+          .where("email", "==", email)
+          .get();
+
+        if (!adminSnapshot.empty) {
+          userDoc = adminSnapshot.docs[0];
+          userData = adminSnapshot.docs[0].data();
+          role = userData.role || "admin";
+        }
+      }
     }
 
-    // Query Firestore for user by email
-    const userSnapshot = await db.collection(collection).where("email", "==", email).get();
-
-    if (userSnapshot.empty) {
-      return res.status(400).json({ message: "User not found" });
+    // ❌ No user found
+    if (!userDoc) {
+      return res.status(404).json({ message: "User not found" });
     }
 
-    const userDoc = userSnapshot.docs[0];
-    const userData = userDoc.data();
-
-    // Compare hashed password
+    // 🔐 Compare passwords
     const isMatch = await bcrypt.compare(password, userData.password);
     if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
+      return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Generate JWT tokens
-    const { token, refreshToken } = generateTokens(userDoc.id, userData.role);
+    // 🧠 Generate tokens
+    const { token, refreshToken } = generateTokens(userDoc.id, role);
 
-    // Safe user object to return
+    // 🧾 Safe user object
     const userSafe = {
       id: userDoc.id,
       fullName: userData.fullName,
       email: userData.email,
       phone: userData.phone || "",
-      role: userData.role,
+      role, // 👈 role now explicitly matches frontend check
     };
 
-    // Set refresh token in HTTP-only cookie
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "Strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    // 🍪 Set refresh token cookie
+    // res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: false, // set to true in production (HTTPS)
+    //   sameSite: "lax", // use "none" for HTTPS cross-domain
+    //   domain: "api.d0lt.local", // keep for local dev
+    //   path: "/",
+    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    // });
 
-    res.status(200).json({
+    res.cookie("refreshToken", refreshToken, {
+  
+     httpOnly: true,                 // Protects from JS access
+  secure: true,                   // Must be true in production (only sent via HTTPS)
+  sameSite: "none",               // Required for cross-site cookies
+  domain: ".netlify.app",         // ✅ allows access across your Netlify subdomains
+  path: "/",                      // Valid for entire domain
+  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+    // ✅ Successful login
+    return res.status(200).json({
       message: "Login successful",
       user: userSafe,
       token,
     });
   } catch (error) {
     console.error("Login error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    return res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
+
 
 const logout = async (req, res) => {
   res.clearCookie("refreshToken", {
@@ -231,12 +280,10 @@ const createServiceProvider = async (req, res) => {
       !Array.isArray(professions) ||
       professions.length === 0
     ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Name, email, password, mobile number, and at least one profession are required",
-        });
+      return res.status(400).json({
+        message:
+          "Name, email, password, mobile number, and at least one profession are required",
+      });
     }
 
     if (password.length < 6) {

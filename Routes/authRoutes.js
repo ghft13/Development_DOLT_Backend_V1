@@ -15,6 +15,11 @@ const {authenticateUser}=require('../Middleware/Authmiddleware')
 router.post("/signup", registerNewUser);
 router.post("/login", loginUserAccount);
 router.post("/logout", logout);
+
+
+
+
+
 router.get("/user", authenticateUser, (req, res) => {
   res.json({ user: req.user });
 });

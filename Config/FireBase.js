@@ -16,7 +16,7 @@ try {
   // Parse the decoded JSON string into an object
   serviceAccount = JSON.parse(decodedJson);
   
-   console.log("Firebase service account loaded successfully");
+  //  console.log("Firebase service account loaded successfully");
   // console.log("Project ID:", serviceAccount.project_id);
 } catch (error) {
   console.error("Failed to load Firebase service account from environment:", error);
@@ -40,16 +40,16 @@ if (!admin.apps.length) {
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
   });
 
-  console.log("Firebase Admin initialized successfully.");
+  // console.log("Firebase Admin initialized successfully.");
   
   // Test storage bucket access
   const bucket = admin.storage().bucket();
   bucket.getMetadata()
     .then(() => {
-      console.log("Firebase Storage bucket is accessible");
+      // console.log("Firebase Storage bucket is accessible");
     })
     .catch((error) => {
-      console.error("Firebase Storage bucket access failed:", error.message);
+      // console.error("Firebase Storage bucket access failed:", error.message);
    //   console.error("Please check your bucket configuration and permissions");
     });
 
