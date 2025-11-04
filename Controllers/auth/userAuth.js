@@ -48,8 +48,8 @@ const registerNewUser = async (req, res) => {
       password: hashedPassword,
       role,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-       bookings: [],
-       providerMapping: [], 
+      bookings: [],
+      providerMapping: [],
     };
 
     if (role === "user") {
@@ -62,7 +62,7 @@ const registerNewUser = async (req, res) => {
       newUserData.ratingCount = 0;
       newUserData.averageRating = 0;
       newUserData.professions = [];
-       newUserData.acceptedBookings = [];
+      newUserData.acceptedBookings = [];
     }
 
     // ✅ Save to Firestore
@@ -72,22 +72,22 @@ const registerNewUser = async (req, res) => {
     const { token, refreshToken } = generateTokens(docRef.id, role);
 
     // ✅ Send Refresh Token cookie
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false, // change to true in production (requires https)
-      sameSite: "lax", // use "none" only with https
-      domain: "api.d0lt.local", // your dev domain
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
     // res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true, // Protects from JS access
-    //   secure: true, // Must be true in production (only sent via HTTPS)
-    //   sameSite: "none", // Required for cross-site cookies
-    //   domain: ".netlify.app", // ✅ allows access across your Netlify subdomains
-    //   path: "/", // Valid for entire domain
+    //   httpOnly: true,
+    //   secure: false, // change to true in production (requires https)
+    //   sameSite: "lax", // use "none" only with https
+    //   domain: "api.d0lt.local", // your dev domain
+    //   path: "/",
     //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     // });
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: true, // ✅ required on Render (uses HTTPS)
+      sameSite: "none", // ✅ required for cross-domain cookies
+      path: "/", // ✅ valid for all routes
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
+
     // ✅ Send response
     res.status(201).json({
       message: "User registered successfully",
@@ -121,19 +121,28 @@ const loginUserAccount = async (req, res) => {
 
     // 🔍 Search based on role
     if (role === "user") {
-      const userSnapshot = await db.collection("users").where("email", "==", email).get();
+      const userSnapshot = await db
+        .collection("users")
+        .where("email", "==", email)
+        .get();
       if (!userSnapshot.empty) {
         userDoc = userSnapshot.docs[0];
         userData = userDoc.data();
       }
     } else if (role === "provider") {
-      const providerSnapshot = await db.collection("serviceProviders").where("email", "==", email).get();
+      const providerSnapshot = await db
+        .collection("serviceProviders")
+        .where("email", "==", email)
+        .get();
       if (!providerSnapshot.empty) {
         userDoc = providerSnapshot.docs[0];
         userData = userDoc.data();
       }
     } else if (role === "admin") {
-      const adminSnapshot = await db.collection("admins").where("email", "==", email).get();
+      const adminSnapshot = await db
+        .collection("admins")
+        .where("email", "==", email)
+        .get();
       if (!adminSnapshot.empty) {
         userDoc = adminSnapshot.docs[0];
         userData = userDoc.data();
@@ -144,7 +153,9 @@ const loginUserAccount = async (req, res) => {
 
     // ❌ No user found
     if (!userDoc) {
-      return res.status(404).json({ message: "User not found for given email and role" });
+      return res
+        .status(404)
+        .json({ message: "User not found for given email and role" });
     }
 
     // 🧠 Generate tokens
@@ -160,13 +171,21 @@ const loginUserAccount = async (req, res) => {
     };
 
     // 🍪 Set refresh token cookie
+    // res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: false, // set true for production
+    //   sameSite: "lax",
+    //   domain: "api.d0lt.local",
+    //   path: "/",
+    //   maxAge: 7 * 24 * 60 * 60 * 1000,
+    // });
+
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: false, // set true for production
-      sameSite: "lax",
-      domain: "api.d0lt.local",
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      secure: true, // ✅ required on Render (uses HTTPS)
+      sameSite: "none", // ✅ required for cross-domain cookies
+      path: "/", // ✅ valid for all routes
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
     // ✅ Success
@@ -175,14 +194,13 @@ const loginUserAccount = async (req, res) => {
       user: userSafe,
       token,
     });
-
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ message: "Server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
-
-
 
 const logout = async (req, res) => {
   res.clearCookie("refreshToken", {

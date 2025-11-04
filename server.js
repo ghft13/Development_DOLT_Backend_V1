@@ -33,8 +33,7 @@ const allowedOrigins = [
   "https://www.paypal.com",
  "http://main.d0lt.local:3000",
   "http://dashboard.d0lt.local:3001",
-  'https://main-clone.netlify.app',
-  'dolt-clone-dashboard.netlify.app'
+  "https://d0lt-getitdone-clone.onrender.com"
 
 ];
 
@@ -126,9 +125,10 @@ app.use("/api/stripe", StripeRoutes);
 // app.use("/api/price",BookingRoute) // This is redundant. Routes from BookingRoute are served under /api/bookings.
 
 const PORT = process.env.PORT || 5000;
-app.listen(5000, "0.0.0.0", () => {
-  console.log("✅ Server running on http://api.d0lt.local:5000");
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server running on port ${PORT}`);
 });
+
 
 
 // Configure email transporter with improved error handling
