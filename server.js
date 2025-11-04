@@ -31,7 +31,7 @@ const allowedOrigins = [
   "https://www.sandbox.paypal.com",
   "https://www.paypal.com",
   "https://d0lt-getitdone-clone.onrender.com"
-
+  "https://dolt-dashboard-clone.onrender.com"
 ];
 
 //  "http://localhost:3000",
