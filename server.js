@@ -30,7 +30,7 @@ const allowedOrigins = [
   "https://deploy-dolt.netlify.app",
   "https://www.sandbox.paypal.com",
   "https://www.paypal.com",
-  "https://d0lt-getitdone-clone.onrender.com"
+  "https://d0lt-getitdone-clone.onrender.com",
   "https://dolt-dashboard-clone.onrender.com"
 ];
 
