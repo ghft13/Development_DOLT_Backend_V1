@@ -27,15 +27,16 @@ dotenv.config();
 // connectDB();
 const app = express();
 const allowedOrigins = [
-  "http://localhost:3000",
   "https://deploy-dolt.netlify.app",
   "https://www.sandbox.paypal.com",
   "https://www.paypal.com",
- "http://main.d0lt.local:3000",
-  "http://dashboard.d0lt.local:3001",
   "https://d0lt-getitdone-clone.onrender.com"
 
 ];
+
+//  "http://localhost:3000",
+//  "http://main.d0lt.local:3000",
+//   "http://dashboard.d0lt.local:3001",
 
 const cookieParser = require("cookie-parser");
 app.use(cookieParser()); // FIRST
