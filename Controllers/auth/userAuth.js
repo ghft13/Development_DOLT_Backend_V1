@@ -48,6 +48,8 @@ const registerNewUser = async (req, res) => {
       password: hashedPassword,
       role,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+       bookings: [],
+       providerMapping: [], 
     };
 
     if (role === "user") {
@@ -60,6 +62,7 @@ const registerNewUser = async (req, res) => {
       newUserData.ratingCount = 0;
       newUserData.averageRating = 0;
       newUserData.professions = [];
+       newUserData.acceptedBookings = [];
     }
 
     // ✅ Save to Firestore
@@ -69,22 +72,22 @@ const registerNewUser = async (req, res) => {
     const { token, refreshToken } = generateTokens(docRef.id, role);
 
     // ✅ Send Refresh Token cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: false, // change to true in production (requires https)
+      sameSite: "lax", // use "none" only with https
+      domain: "api.d0lt.local", // your dev domain
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    });
     // res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: false, // change to true in production (requires https)
-    //   sameSite: "lax", // use "none" only with https
-    //   domain: "api.d0lt.local", // your dev domain
-    //   path: "/",
+    //   httpOnly: true, // Protects from JS access
+    //   secure: true, // Must be true in production (only sent via HTTPS)
+    //   sameSite: "none", // Required for cross-site cookies
+    //   domain: ".netlify.app", // ✅ allows access across your Netlify subdomains
+    //   path: "/", // Valid for entire domain
     //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     // });
-res.cookie("refreshToken", refreshToken, {
-     httpOnly: true,                 // Protects from JS access
-  secure: true,                   // Must be true in production (only sent via HTTPS)
-  sameSite: "none",               // Required for cross-site cookies
-  domain: ".netlify.app",         // ✅ allows access across your Netlify subdomains
-  path: "/",                      // Valid for entire domain
-  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-});
     // ✅ Send response
     res.status(201).json({
       message: "User registered successfully",
@@ -96,72 +99,52 @@ res.cookie("refreshToken", refreshToken, {
       token,
       role,
     });
- 
   } catch (error) {
     console.error("Registration error:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
+// ✅ controllers/authController.js
+
 const loginUserAccount = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, role } = req.body; // 👈 get both email and role
 
   try {
-    if (!email || !password) {
-      return res
-        .status(400)
-        .json({ message: "Email and password are required" });
+    // 🧱 Check required fields
+    if (!email || !role) {
+      return res.status(400).json({ message: "Email and role are required" });
     }
 
     let userDoc = null;
     let userData = null;
-    let role = "";
 
-    // 🔍 Check users collection (previously homeowners)
-    const userSnapshot = await db
-      .collection("users")
-      .where("email", "==", email)
-      .get();
-
-    if (!userSnapshot.empty) {
-      userDoc = userSnapshot.docs[0];
-      userData = userDoc.data();
-      role = "user";
-    } else {
-      // 🔍 Check service providers
-      const providerSnapshot = await db
-        .collection("serviceProviders")
-        .where("email", "==", email)
-        .get();
-
+    // 🔍 Search based on role
+    if (role === "user") {
+      const userSnapshot = await db.collection("users").where("email", "==", email).get();
+      if (!userSnapshot.empty) {
+        userDoc = userSnapshot.docs[0];
+        userData = userDoc.data();
+      }
+    } else if (role === "provider") {
+      const providerSnapshot = await db.collection("serviceProviders").where("email", "==", email).get();
       if (!providerSnapshot.empty) {
         userDoc = providerSnapshot.docs[0];
         userData = userDoc.data();
-        role = "provider";
-      } else {
-        // 🔍 Check admins
-        const adminSnapshot = await db
-          .collection("admins")
-          .where("email", "==", email)
-          .get();
-
-        if (!adminSnapshot.empty) {
-          userDoc = adminSnapshot.docs[0];
-          userData = adminSnapshot.docs[0].data();
-          role = userData.role || "admin";
-        }
       }
+    } else if (role === "admin") {
+      const adminSnapshot = await db.collection("admins").where("email", "==", email).get();
+      if (!adminSnapshot.empty) {
+        userDoc = adminSnapshot.docs[0];
+        userData = userDoc.data();
+      }
+    } else {
+      return res.status(400).json({ message: "Invalid role provided" });
     }
 
     // ❌ No user found
     if (!userDoc) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    // 🔐 Compare passwords
-    const isMatch = await bcrypt.compare(password, userData.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Invalid credentials" });
+      return res.status(404).json({ message: "User not found for given email and role" });
     }
 
     // 🧠 Generate tokens
@@ -173,42 +156,32 @@ const loginUserAccount = async (req, res) => {
       fullName: userData.fullName,
       email: userData.email,
       phone: userData.phone || "",
-      role, // 👈 role now explicitly matches frontend check
+      role,
     };
 
     // 🍪 Set refresh token cookie
-    // res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: false, // set to true in production (HTTPS)
-    //   sameSite: "lax", // use "none" for HTTPS cross-domain
-    //   domain: "api.d0lt.local", // keep for local dev
-    //   path: "/",
-    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    // });
-
     res.cookie("refreshToken", refreshToken, {
-  
-     httpOnly: true,                 // Protects from JS access
-  secure: true,                   // Must be true in production (only sent via HTTPS)
-  sameSite: "none",               // Required for cross-site cookies
-  domain: ".netlify.app",         // ✅ allows access across your Netlify subdomains
-  path: "/",                      // Valid for entire domain
-  maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      httpOnly: true,
+      secure: false, // set true for production
+      sameSite: "lax",
+      domain: "api.d0lt.local",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
-    // ✅ Successful login
+
+    // ✅ Success
     return res.status(200).json({
       message: "Login successful",
       user: userSafe,
       token,
     });
+
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({
-      message: "Server error",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 const logout = async (req, res) => {

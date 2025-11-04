@@ -20,6 +20,8 @@ const ImageUploadRoute = require("./Routes/ImageUploadRoute.js");
 const UploadRoute = require("./Routes/UploadRoute");
 const MarketplaceOrderRoute = require("./Routes/MarketplaceOrderRoute.js");
 const serviceRoutes = require("./Routes/ServiceRoutes.js");
+
+const { db } = require("./Config/FireBase.js");
 dotenv.config();
 
 // connectDB();
@@ -55,41 +57,65 @@ app.get("/", function (req, res) {
   res.send("hey Hello");
 });
 
+
 app.get("/api/auth/verify", async (req, res) => {
-  c
   const refreshToken = req.cookies.refreshToken;
   if (!refreshToken)
     return res.status(401).json({ message: "Not authenticated — token unavailable" });
-   
+
   try {
-  
+    // ✅ Decode the token
     const userData = verifyRefreshToken(refreshToken);
-  
+
     if (!userData || !userData.id) {
       console.error("Invalid token data:", userData);
       return res.status(401).json({ message: "Invalid token" });
     }
 
+    // ✅ Check in both collections
+    const userRef = db.collection("users").doc(userData.id);
+    const providerRef = db.collection("serviceProviders").doc(userData.id);
 
-  
+    const [userSnap, providerSnap] = await Promise.all([
+      userRef.get(),
+      providerRef.get(),
+    ]);
 
-    res.json({ user: userData });
-  
+    let user;
+    if (userSnap.exists) {
+      user = userSnap.data();
+    } else if (providerSnap.exists) {
+      user = providerSnap.data();
+    } else {
+      return res.status(404).json({ message: "User not found in any collection" });
+    }
+
+    // ✅ Send back common structure
+    res.json({
+      user: {
+        id: userData.id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+      },
+    });
   } catch (err) {
-   
+    console.error("❌ Token verification failed:", err);
     res.status(401).json({ message: "Invalid token" });
   }
 });
 
 
+
 app.use("/api/services", serviceRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/bookings", BookingRoute);
 app.use("/api/user-counts", AdminDashboard);
 app.get("/api/admin", authenticateAdmin, (req, res) => {
   res.json(req.admin);
 });
 app.use("/api/marketplace", MarketplaceRoute); // Changed from /api/bookings/marketplace
-app.use("/api/bookings", BookingRoute);
+
 app.use("/api/paypal", PayPalRoutes);
 app.use("/api/stripe", StripeRoutes);
 // app.use("/api/orders", OrderRoute);

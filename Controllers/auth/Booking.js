@@ -5,7 +5,6 @@ const createBooking = async (req, res) => {
     const {
       id,
       user_id,
-      provider_id,
       service_id,
       status,
       scheduled_date,
@@ -23,21 +22,15 @@ const createBooking = async (req, res) => {
       user_name,
       user_email,
     } = req.body;
+    console.log("Received booking data:", req.body);
 
-
-    // console.log("Creating booking with data:", req.body);
     // ✅ Validate required fields
     if (!user_id || !service_id || !scheduled_date || !address) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    // ✅ Create a new booking document
-    const newDocRef = db.collection("bookings").doc(id || undefined); // use given id if provided
-
     const bookingData = {
-      bookingId: newDocRef.id,
       user_id,
-      provider_id: provider_id || null,
       service_id,
       status: status || "pending",
       scheduled_date,
@@ -58,23 +51,27 @@ const createBooking = async (req, res) => {
       service_description,
       user_name,
       user_email,
-      isBooked: true,
+      isBooked: false,
       isCancelled: false,
     };
 
-    // ✅ Store booking in Firestore
-    await newDocRef.set(bookingData);
+    let newDocRef;
+
+    if (id) {
+      // ✅ If an ID is provided, use it
+      newDocRef = db.collection("bookings").doc(id);
+      await newDocRef.set({ ...bookingData, bookingId: id });
+    } else {
+      // ✅ If no ID, auto-generate one
+      newDocRef = await db.collection("bookings").add(bookingData);
+      bookingData.bookingId = newDocRef.id;
+    }
 
     // ✅ Add booking reference to the user document
-    await db
-      .collection("homeowners")
-      .doc(user_id)
-      .update({
-        bookingIds: admin.firestore.FieldValue.arrayUnion(newDocRef.id),
-      });
+   
 
     res.status(201).json({
-      message: "Booking created successfully",
+      message: "✅ Booking created successfully",
       booking: bookingData,
     });
   } catch (error) {
@@ -83,9 +80,7 @@ const createBooking = async (req, res) => {
   }
 };
 
-
 const getBookingdata = async (req, res) => {
-  // console.log(req.body)
   try {
     const { userId } = req.query; // ✅ fixed
 
@@ -98,7 +93,7 @@ const getBookingdata = async (req, res) => {
 
     const bookingsRef = db.collection("bookings");
 
-    const snapshot = await bookingsRef.where("userId", "==", userId).get();
+    const snapshot = await bookingsRef.where("user_id", "==", userId).get();
 
     if (snapshot.empty) {
       return res.status(200).json({
@@ -127,7 +122,8 @@ const getBookingdata = async (req, res) => {
 
 const getProviderBookings = async (req, res) => {
   try {
-    const { providerId } = req.query;
+    const { providerId } = req.query; // Get providerId from query params
+
     if (!providerId) {
       return res.status(400).json({
         success: false,
@@ -135,66 +131,64 @@ const getProviderBookings = async (req, res) => {
       });
     }
 
-    const providerRef = db.collection("serviceProviders").doc(providerId);
-    const providerDoc = await providerRef.get();
+    // Fetch ALL bookings
+    const snapshot = await db.collection("bookings").get();
 
-    if (!providerDoc.exists) {
-      return res.status(404).json({
-        success: false,
-        message: "Provider not found",
+    if (snapshot.empty) {
+      return res.status(200).json({
+        success: true,
+        count: 0,
+        data: [],
       });
     }
 
-    const providerData = providerDoc.data();
-    const providerProfessions = (providerData.professions || []).map(
-      (profession) => profession.toLowerCase().trim()
-    );
-   
-    const bookingIds = providerData.bookingIds || [];
+    // Map and filter bookings
+    const bookings = snapshot.docs
+      .map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }))
+      .filter((booking) => {
+        // ❌ Skip cancelled bookings
+        if (booking.isCancelled === true) {
+          return false;
+        }
 
-    // Get bookings by bookingIds
-    const bookedByProviderPromises = bookingIds.map((id) =>
-      db.collection("bookings").doc(id).get()
-    );
-    const bookedByProviderDocs = await Promise.all(bookedByProviderPromises);
+        // ✅ Show booking if it's NOT booked yet (available for all providers)
+        if (!booking.isBooked || booking.status === "pending") {
+          return true;
+        }
 
-    const bookedByProvider = bookedByProviderDocs
-      .filter((doc) => doc.exists)
-      .map((doc) => ({ id: doc.id, ...doc.data() }));
+        // ✅ Show booking if it's booked by THIS provider
+        if (booking.isBooked && booking.provider_id === providerId) {
+          return true;
+        }
 
-    // Get all bookings to filter for available ones
-    const bookingsSnapshot = await db.collection("bookings").get();
-
-    const additionalBookings = bookingsSnapshot.docs
-      .filter((doc) => {
-        const data = doc.data();
-        return (
-          data.status === "pending" &&
-          data.isBooked === false &&
-          providerProfessions.includes(data.service.toLowerCase().trim()) && // 🔥 case-insensitive + trimmed match
-          !bookingIds.includes(doc.id)
-        );
-      })
-      .map((doc) => ({ id: doc.id, ...doc.data() }));
-
-    const allRelevantBookings = [...bookedByProvider, ...additionalBookings];
+        // ❌ Hide if booked by another provider
+        return false;
+      });
 
     res.status(200).json({
       success: true,
-      data: allRelevantBookings,
+      count: bookings.length,
+      data: bookings,
     });
   } catch (error) {
-    console.error("Error fetching provider booking data:", error);
+    console.error("❌ Error fetching provider bookings:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching booking data",
+      message: "Server error while fetching bookings",
     });
   }
 };
 
+
 const UpdateBooking = async (req, res) => {
   const bookingId = req.params.id;
   const updatedData = req.body;
+
+  console.log("🔄 UpdateBooking called with ID:", bookingId);
+  console.log("🔄 Update data:", updatedData);
 
   try {
     const docRef = db.collection("bookings").doc(bookingId);
@@ -204,57 +198,55 @@ const UpdateBooking = async (req, res) => {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    // Handle declined
-    if (updatedData.status === "declined") {
-      updatedData.status = doc.data().status; // Retain original
-      updatedData.isBooked = false;
-    }
-    // Handle Confirm
-    else if (updatedData.status === "Confirmed") {
-      updatedData.status = "Confirmed";
-    }
+    const bookingData = doc.data();
 
-    // Handle completed
-    else if (updatedData.status === "completed") {
-      updatedData.isBooked = false;
-      // Earnings calculation and update
-      const bookingData = doc.data();
-      // Try to get providerId from providerDetails, serviceProviderId, or providerId
-      const providerId = (bookingData.providerDetails && bookingData.providerDetails.id) || bookingData.serviceProviderId || bookingData.providerId;
-      let serviceAmount = bookingData.serviceAmount;
-      if (typeof serviceAmount !== "number" || isNaN(serviceAmount) || serviceAmount <= 0) {
-        serviceAmount = 0;
+    // 🟢 Handle Accepted (Provider Assigned)
+    if (updatedData.providerDetails) {
+      const providerId = updatedData.providerDetails.provider_id;
+
+      if (!providerId) {
+        return res.status(400).json({ message: "Provider ID is missing" });
       }
-      // Prevent double increment: only add earning if not already set
-      if (providerId && serviceAmount > 0 && !bookingData.providerEarning) {
-        // Calculate earning and round to 2 decimals (e.g., 90% to provider)
-        const earning = Math.round(serviceAmount * 0.9 * 100) / 100;
-        const providerRef = db.collection("serviceProviders").doc(providerId);
-        await providerRef.update({
-          earnings: admin.firestore.FieldValue.increment(earning),
+
+      // ✅ Check if booking is already accepted by another provider
+      if (bookingData.isBooked && bookingData.provider_id !== providerId) {
+        return res.status(409).json({ 
+          message: "This booking has already been accepted by another provider" 
         });
-        // Store earning in booking document for audit (write immediately)
-        await docRef.update({ providerEarning: earning });
       }
-    }
 
-    // Handle accepted (provider assigned)
-    else if (updatedData.providerDetails) {
+      // Update local booking fields
       updatedData.isBooked = true;
-      const providerId = updatedData.providerDetails.id;
-      const userId = doc.data().userId;
-      const providerRef = db.collection("serviceProviders").doc(providerId);
+      updatedData.status = "accepted";
+      updatedData.provider_id = providerId; // store provider ID in booking
+      updatedData.acceptedAt = new Date().toISOString();
 
-      // Increment total_Appointments
+      const providerRef = db.collection("serviceProviders").doc(providerId);
+      const userRef = db.collection("users").doc(bookingData.user_id);
+
+      await userRef.update({
+        bookings: admin.firestore.FieldValue.arrayUnion(bookingId),
+        providerMapping: admin.firestore.FieldValue.arrayUnion({
+          bookingId: bookingId,
+          providerId: providerId,
+        }),
+      });
+
+      // Increment provider stats
       await providerRef.update({
-        bookingIds: admin.firestore.FieldValue.arrayUnion(bookingId),
         total_Appointments: admin.firestore.FieldValue.increment(1),
       });
 
-      // Check if this user is a new client for this provider
+      await providerRef.update({
+        acceptedBookings: admin.firestore.FieldValue.arrayUnion(bookingId),
+      });
+
+      // Check if this user is a new client for the provider
       const providerDoc = await providerRef.get();
-      const servedClients = providerDoc.data().servedClients || [];
-      if (!servedClients.includes(userId)) {
+      const servedClients = providerDoc.data()?.servedClients || [];
+      const userId = bookingData.user_id; // make sure matches your field name
+
+      if (userId && !servedClients.includes(userId)) {
         await providerRef.update({
           total_clients: admin.firestore.FieldValue.increment(1),
           servedClients: admin.firestore.FieldValue.arrayUnion(userId),
@@ -262,13 +254,20 @@ const UpdateBooking = async (req, res) => {
       }
     }
 
-    await docRef.update(updatedData);
-    return res.status(200).json({ message: "Booking updated" });
+    // ✅ Update booking in Firestore safely (filter out undefineds)
+    const cleanData = Object.fromEntries(
+      Object.entries(updatedData).filter(([_, v]) => v !== undefined)
+    );
+
+    await docRef.update(cleanData);
+
+    return res.status(200).json({ message: "Booking accepted successfully" });
   } catch (err) {
-    console.error("Error in UpdateBooking:", err);
-    return res
-      .status(500)
-      .json({ message: "Error updating booking", error: err.message });
+    console.error("❌ Error in UpdateBooking:", err);
+    return res.status(500).json({
+      message: "Error updating booking",
+      error: err.message,
+    });
   }
 };
 
@@ -280,19 +279,23 @@ const CancelBooking = async (req, res) => {
     const bookingDoc = await bookingRef.get();
 
     if (!bookingDoc.exists) {
-      return res.status(404).json({ message: "Booking not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Booking not found" });
     }
 
     await bookingRef.update({
-      status: "canceled",
-      canceledAt: new Date().toISOString(), // optional: track when it was canceled
+      status: "cancelled", // ✅ use double “l”
+      isCancelled: true, // ✅ useful for quick filters
+      cancelledAt: new Date().toISOString(),
     });
 
-    // console.log("Booking canceled successfully:", id);
-    res.status(200).json({ message: "Booking successfully canceled" });
+    res
+      .status(200)
+      .json({ success: true, message: "Booking successfully cancelled" });
   } catch (error) {
-    console.error("Error canceling booking:", error);
-    res.status(500).json({ message: "Internal Server Error" });
+    console.error("Error cancelling booking:", error);
+    res.status(500).json({ success: false, message: "Internal Server Error" });
   }
 };
 
@@ -353,7 +356,9 @@ const rateBooking = async (req, res) => {
     if (bookingData.rating)
       return res.status(400).json({ message: "Already rated." });
     if (bookingData.status !== "completed")
-      return res.status(400).json({ message: "Can only rate completed bookings." });
+      return res
+        .status(400)
+        .json({ message: "Can only rate completed bookings." });
 
     // Update booking with rating
     await bookingRef.update({ rating });
@@ -361,16 +366,17 @@ const rateBooking = async (req, res) => {
     // Update provider's average rating
     const providerRef = db.collection("serviceProviders").doc(providerId);
     const providerDoc = await providerRef.get();
-    if (!providerDoc.exists) return res.status(404).json({ message: 'Provider not found.' });
+    if (!providerDoc.exists)
+      return res.status(404).json({ message: "Provider not found." });
     const providerData = providerDoc.data();
     const prevCount = providerData.ratingCount || 0;
     const prevAvg = providerData.averageRating || 0;
     const newCount = prevCount + 1;
-    const newAvg = ((prevAvg * prevCount) + rating) / newCount;
+    const newAvg = (prevAvg * prevCount + rating) / newCount;
     await providerRef.update({
       averageRating: newAvg,
       ratingCount: newCount,
-      Rating: newAvg // Store the average in the 'Rating' field as well
+      Rating: newAvg, // Store the average in the 'Rating' field as well
     });
     res.json({ message: "Rating submitted." });
   } catch (err) {
@@ -397,9 +403,13 @@ const addEarning = async (req, res) => {
       return res.status(404).json({ message: "Booking not found." });
     const bookingData = bookingDoc.data();
     if (bookingData.providerEarning)
-      return res.status(400).json({ message: "Earning already added for this booking." });
+      return res
+        .status(400)
+        .json({ message: "Earning already added for this booking." });
     if (bookingData.status !== "completed")
-      return res.status(400).json({ message: "Can only add earning for completed bookings." });
+      return res
+        .status(400)
+        .json({ message: "Can only add earning for completed bookings." });
 
     // Update booking with earning
     await bookingRef.update({ providerEarning: earning });
@@ -407,12 +417,13 @@ const addEarning = async (req, res) => {
     // Update provider's total earnings
     const providerRef = db.collection("serviceProviders").doc(providerId);
     const providerDoc = await providerRef.get();
-    if (!providerDoc.exists) return res.status(404).json({ message: 'Provider not found.' });
+    if (!providerDoc.exists)
+      return res.status(404).json({ message: "Provider not found." });
     const providerData = providerDoc.data();
     const prevEarnings = providerData.earnings || 0;
     const newEarnings = prevEarnings + earning;
     await providerRef.update({
-      earnings: newEarnings
+      earnings: newEarnings,
     });
     res.json({ message: "Earning added and provider's total updated." });
   } catch (err) {
