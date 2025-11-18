@@ -1,4 +1,4 @@
-const { db } = require("../../config/firebase.js");
+const { db } = require("../../Config/FireBase.js");
 
 // 🟩 Add a new product
 const addProduct = async (req, res) => {
