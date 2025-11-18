@@ -1,17 +1,16 @@
-const ServiceData=require("../Data/ServiceData.js")
-const express=require("express")
-const router = express.Router()
+const express = require("express");
+const { addService, getAllServices,updateService,deleteService} 
+=require( "../Controllers/auth/Service.js")
 
-router.get("/", (req, res) => {
-  res.json(ServiceData)
-})
+const router = express.Router();
 
-router.get("/:id", (req, res) => {
-  const service = ServiceData.find((s) => s.id === req.params.id)
-  if (!service) {
-    return res.status(404).json({ error: "Service not found" })
-  }
-  res.json(service)
-})
 
-module.exports = router
+
+// Add a new service
+router.post("/add", addService);
+router.get("/all", getAllServices)
+router.put("/update/:id", updateService);
+router.delete("/delete/:id", deleteService);
+  
+
+module.exports = router;

@@ -1,7 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const Admin = require("../../Models/Admin");
-const { db } = require("../../Config/FireBase");
+const { db,admin }=require("../../config/firebase.js")
 
 const createDefaultAdmin = async () => {
   try {
@@ -9,13 +8,15 @@ const createDefaultAdmin = async () => {
       {
         adminId: "admin123",
         name: "Super Admin",
-        password: "123",
+        email: "superadmin@dolt.com",
+        password: "admin1234", // ✅ 8 characters
         role: "admin",
       },
       {
         adminId: "admin456",
-        name: "TestAdmin",
-        password: "abc",
+        name: "Test Admin",
+        email: "testadmin@dolt.com",
+        password: "admin4567", // ✅ 8 characters
         role: "admin",
       },
     ];
@@ -27,27 +28,28 @@ const createDefaultAdmin = async () => {
       if (!existingAdmin.exists) {
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(admin.password, saltRounds);
-        const newDocRef = db.collection("admins").doc();
+
         await adminRef.set({
-          id: newDocRef.id,
           adminId: admin.adminId,
           name: admin.name,
+          email: admin.email,
           password: hashedPassword,
           role: admin.role,
-          createdAt: new Date().toISOString(), // or use admin.firestore.Timestamp.now()
+          createdAt: new Date().toISOString(),
         });
 
-        //    console.log(`Created admin: ${admin.name}`);
+     //   console.log(`✅ Created admin: ${admin.name}`);
       } else {
-        //    console.log(`Admin ${admin.name} already exists.`);
+      //  console.log(`ℹ️ Admin ${admin.name} already exists.`);
       }
     }
 
-    // console.log("Admin setup completed.");
+    console.log("✅ Admin setup completed.");
   } catch (error) {
-    console.error("Error creating admins:", error);
+    console.error("❌ Error creating admins:", error);
   }
 };
+
 
 const adminLoginHandler = async (req, res) => {
   try {

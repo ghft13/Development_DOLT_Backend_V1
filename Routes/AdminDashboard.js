@@ -2,16 +2,12 @@ const express=require("express");
 const router=express.Router();
 
 
-const{getdata,GetTotalBookings,GetUserDetails,DeleteUser,AdminUpdateUser,SuspendUser}=require("../Controllers/DashBoardController.js");
-const { authenticateAdmin } = require("../Middleware/Authmiddleware.js");
+const{GetUserDetails,getUserCounts, getAllBookingsWithStatus,GetServiceProviderDetails}
+     =require("../Controllers/DashBoardController.js");
 
-router.get("/data",getdata)
-router.get("/TotalBookings",GetTotalBookings)
-router.get("/user-details",GetUserDetails)
 
-// Admin user management
-router.delete("/user/:id", DeleteUser);
-router.put("/user/:id", AdminUpdateUser);
-router.put("/user/:id/suspend", SuspendUser);
-
+router.get("/users/count",getUserCounts);
+router.get("/books",getAllBookingsWithStatus);
+router.get("/users",GetUserDetails);
+router.get("/serviceproviders",GetServiceProviderDetails);
 module.exports=router

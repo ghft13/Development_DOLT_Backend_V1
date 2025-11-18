@@ -3,29 +3,25 @@ const router = express.Router();
 const {
   registerNewUser,
   loginUserAccount,
- // getAuthenticatedUser,
-  sendOtpToUserEmail,
   logout,
-  createServiceProvider,
-  updateUserProfile
+  BecomeProvider,
+  BecomeUser,
+  switchRole,
+  VerifyUser,
+  updateProviderProfile,
+  getLoggedInProviderData
 } = require("../Controllers/auth/userAuth");
-const { adminLoginHandler} = require("../Controllers/auth/adminAuth");
-const {authenticateUser}=require('../Middleware/Authmiddleware')
+
+
 
 router.post("/signup", registerNewUser);
 router.post("/login", loginUserAccount);
 router.post("/logout", logout);
+router.post("/become-provider",BecomeProvider)
+router.post("/become-user",BecomeUser)
+router.post("/switch-role",switchRole)
 
-
-
-
-
-router.get("/user", authenticateUser, (req, res) => {
-  res.json({ user: req.user });
-});
-router.post("/admin-login", adminLoginHandler);
-router.post("/getemailotp", sendOtpToUserEmail);
-router.post("/create-provider", createServiceProvider);
-router.put("/profile/:id", updateUserProfile);
-
+router.get("/verify",VerifyUser)
+router.get("/me", getLoggedInProviderData);
+router.put("/update-profile",  updateProviderProfile);
 module.exports = router;

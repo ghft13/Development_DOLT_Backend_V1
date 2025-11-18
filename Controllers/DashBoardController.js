@@ -1,203 +1,247 @@
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
-const ServiceProvider = require("../Models/ServiceProvider");
-const Homeowner = require("../Models/Homeowner");
-const Admin = require("../Models/Admin");
-const { db } = require("../Config/FireBase");
+const { db,admin }=require("../config/firebase.js")
 
-const getdata = async (req, res) => {
+const getUserCounts = async (req, res) => {
   try {
-    // Get counts from Firestore collections
-    const homeownerSnapshot = await db.collection("homeowners").get();
-    const serviceProviderSnapshot = await db
-      .collection("serviceProviders")
-      .get();
+    // Fetch both collections in parallel
+    const [homeownersSnap, serviceProvidersSnap] = await Promise.all([
+      db.collection("users").get(),
+      db.collection("serviceProviders").get(),
+    ]);
 
-    const adminSnapshot = await db.collection("admins").get();
+    // Calculate counts
+    const homeownerCount = homeownersSnap.size;
+    const serviceProviderCount = serviceProvidersSnap.size;
 
-    const homeownerCount = homeownerSnapshot.size;
-    const serviceProviderCount = serviceProviderSnapshot.size;
-    const adminCount = adminSnapshot.size;
+    // Deduplicate using a common unique field (email or uid)
+    const uniqueUsers = new Set();
 
-    res.json({
-      homeownerCount,
-      serviceProviderCount,
-      adminCount,
-      totalUsers: homeownerCount + serviceProviderCount,
+    homeownersSnap.forEach((doc) => {
+      const data = doc.data();
+      if (data.email) uniqueUsers.add(data.email.toLowerCase());
     });
-  } catch (err) {
-   
-    res.status(500).json({ message: "Server error" });
+
+    serviceProvidersSnap.forEach((doc) => {
+      const data = doc.data();
+      if (data.email) uniqueUsers.add(data.email.toLowerCase());
+    });
+
+    const totalUniqueUsers = uniqueUsers.size;
+
+    // Send structured response
+    res.status(200).json({
+      success: true,
+      data: {
+        homeownerCount,
+        serviceProviderCount,
+        totalUsers: totalUniqueUsers, // 👈 unique total
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching user counts:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch user counts",
+      error: error.message,
+    });
   }
 };
 
-const GetTotalBookings = async (req, res) => {
+
+const getAllBookingsWithStatus = async (req, res) => {
   try {
-    // Get all bookings from Firestore collection
+    // Fetch all bookings in one go (most efficient)
     const bookingsSnapshot = await db.collection("bookings").get();
 
-    const totalBookings = bookingsSnapshot.size;
+    // Initialize containers
+    let acceptedBookings = [];
+    let completedBookings = [];
+    let cancelledBookings = [];
+    let pendingBookings = [];
 
-    // Count completed bookings and collect all booking details
-    let completedBookings = 0;
-    let pendingBookings = 0;
-    const allBookings = [];
+    let acceptedCount = 0;
+    let completedCount = 0;
+    let cancelledCount = 0;
+    let pendingCount = 0;
 
+    // Categorize each booking
     bookingsSnapshot.forEach((doc) => {
       const data = doc.data();
+      const booking = { id: doc.id, ...data };
 
-      const bookingWithId = { id: doc.id, ...data };
-      allBookings.push(bookingWithId);
-
-      if (data.status && data.status.toLowerCase() === "completed") {
-        completedBookings++;
-      } else if (data.status && data.status.toLowerCase() === "pending") {
-        pendingBookings++;
+      if (data.status === "accepted") {
+        acceptedBookings.push(booking);
+        acceptedCount++;
+      } else if (data.status === "completed") {
+        completedBookings.push(booking);
+        completedCount++;
+      } else if (data.isCancelled === true || data.status === "cancelled") {
+        cancelledBookings.push(booking);
+        cancelledCount++;
+      } else {
+        // Treat everything else as pending or unconfirmed
+        pendingBookings.push(booking);
+        pendingCount++;
       }
     });
 
+    // Send structured response
     res.json({
-      totalBookings,
-      completedBookings,
-      pendingBookings,
-      allBookings,  
+      success: true,
+      totalBookings: bookingsSnapshot.size,
+      acceptedCount,
+      completedCount,
+      cancelledCount,
+      pendingCount,
+      data: {
+        accepted: acceptedBookings,
+        completed: completedBookings,
+        cancelled: cancelledBookings,
+        pending: pendingBookings,
+      },
     });
   } catch (err) {
-    
-    res.status(500).json({ message: "Server error" });
+    console.error("Error fetching bookings:", err);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch bookings",
+      error: err.message,
+    });
   }
 };
 
+
 const GetUserDetails = async (req, res) => {
   try {
-    // Fetch documents from Firestore
-    const homeownerSnapshot = await db.collection("homeowners").get();
-    const serviceProviderSnapshot = await db
-      .collection("serviceProviders")
-      .get();
+   
 
-    // Convert snapshots to array of user objects
+    const homeownerSnapshot = await db.collection("users").get();
+
     const homeowners = homeownerSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-       address: doc.data().address || "",
-      profilePic: doc.data().profilePic || "",
-    }));
-    const serviceProviders = serviceProviderSnapshot.docs.map((doc) => ({
       id: doc.id,
       ...doc.data(),
       address: doc.data().address || "",
       profilePic: doc.data().profilePic || "",
     }));
-    const allUsers = [...homeowners, ...serviceProviders];
-    // Send the data
+
     res.json({
-      homeowners,
-      serviceProviders,
-      allUsers,
+      success: true,
+      data: homeowners,   // ✅ Only homeowners returned
     });
+
   } catch (err) {
-    
-    res.status(500).json({ message: "Server error" });
+    console.error("Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+const GetServiceProviderDetails = async (req, res) => {
+  try {
+
+    const providerSnapshot = await db.collection("serviceProviders").get();
+
+    const serviceProviders = providerSnapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+      address: doc.data().address || "",
+      profilePic: doc.data().profilePic || "",
+    }));
+
+    res.json({
+      success: true,
+      data: serviceProviders,
+    });
+
+  } catch (err) {
+    console.error("Error:", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+
 
 // Delete user by ID (admin only)
-const DeleteUser = async (req, res) => {
-  const { id } = req.params;
-  try {
-    // Try homeowners first
-    let userRef = db.collection("homeowners").doc(id);
-    let userDoc = await userRef.get();
-    let collection = "homeowners";
-    if (!userDoc.exists) {
-      // Try serviceProviders
-      userRef = db.collection("serviceProviders").doc(id);
-      userDoc = await userRef.get();
-      collection = "serviceProviders";
-    }
-    if (!userDoc.exists) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    await userRef.delete();
-    res.json({ success: true, message: `User deleted from ${collection}` });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to delete user", error: err.message });
-  }
-};
+// const DeleteUser = async (req, res) => {
+//   const { id } = req.params;
+//   try {
+//     // Try homeowners first
+//     let userRef = db.collection("homeowners").doc(id);
+//     let userDoc = await userRef.get();
+//     let collection = "homeowners";
+//     if (!userDoc.exists) {
+//       // Try serviceProviders
+//       userRef = db.collection("serviceProviders").doc(id);
+//       userDoc = await userRef.get();
+//       collection = "serviceProviders";
+//     }
+//     if (!userDoc.exists) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+//     await userRef.delete();
+//     res.json({ success: true, message: `User deleted from ${collection}` });
+//   } catch (err) {
+//     res.status(500).json({ message: "Failed to delete user", error: err.message });
+//   }
+// };
 
 // Suspend user by ID (admin only)
-const SuspendUser = async (req, res) => {
-  const { id } = req.params;
-  try {
-    // Try homeowners first
-    let userRef = db.collection("homeowners").doc(id);
-    let userDoc = await userRef.get();
-    let collection = "homeowners";
-    if (!userDoc.exists) {
-      // Try serviceProviders
-      userRef = db.collection("serviceProviders").doc(id);
-      userDoc = await userRef.get();
-      collection = "serviceProviders";
-    }
-    if (!userDoc.exists) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    await userRef.update({ status: "suspended" });
-    res.json({ success: true, message: `User suspended in ${collection}` });
-  } catch (err) {
-    res.status(500).json({ message: "Failed to suspend user", error: err.message });
-  }
-};
+// const SuspendUser = async (req, res) => {
+//   const { id } = req.params;
+//   try {
+//     // Try homeowners first
+//     let userRef = db.collection("homeowners").doc(id);
+//     let userDoc = await userRef.get();
+//     let collection = "homeowners";
+//     if (!userDoc.exists) {
+//       // Try serviceProviders
+//       userRef = db.collection("serviceProviders").doc(id);
+//       userDoc = await userRef.get();
+//       collection = "serviceProviders";
+//     }
+//     if (!userDoc.exists) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
+//     await userRef.update({ status: "suspended" });
+//     res.json({ success: true, message: `User suspended in ${collection}` });
+//   } catch (err) {
+//     res.status(500).json({ message: "Failed to suspend user", error: err.message });
+//   }
+// };
 
 // Update user credentials (admin only)
-const AdminUpdateUser = async (req, res) => {
-  const { id } = req.params;
-  const { name, email, mobnumber, address, profilePic, role, status } = req.body;
-  try {
-    // Try homeowners first
-    let userRef = db.collection("homeowners").doc(id);
-    let userDoc = await userRef.get();
-    let collection = "homeowners";
-    if (!userDoc.exists) {
-      // Try serviceProviders
-      userRef = db.collection("serviceProviders").doc(id);
-      userDoc = await userRef.get();
-      collection = "serviceProviders";
-    }
-    if (!userDoc.exists) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    const updates = {};
-    if (name) updates.name = name;
-    if (typeof address !== "undefined") updates.address = address;
-    if (typeof profilePic !== "undefined") updates.profilePic = profilePic;
-    if (typeof mobnumber !== "undefined") updates.mobnumber = mobnumber;
-    if (collection === "homeowners" && typeof email !== "undefined") updates.email = email;
-    if (typeof status !== "undefined") updates.status = status; // Allow admin to update status
-
-    await userRef.update(updates);
-    const updatedDoc = await userRef.get();
-    const userData = updatedDoc.data();
-    delete userData.password;
-    res.json({ user: { id, ...userData } });
-  } catch (error) {
-    res.status(500).json({ message: "Failed to update user", error: error.message });
-  }
-};
-
-// const getdata=async(req,res)=>{
-//     try{
-//         const homeownerCount=await Homeowner.countDocuments()
-//         const serviceProviderCount=await ServiceProvider.countDocuments()
-//         const adminCount=await Admin.countDocuments()
-
-//         res.json({ homeownerCount,serviceProviderCount,adminCount,totaluser:homeownerCount+serviceProviderCount})
+// const AdminUpdateUser = async (req, res) => {
+//   const { id } = req.params;
+//   const { name, email, mobnumber, address, profilePic, role, status } = req.body;
+//   try {
+//     // Try homeowners first
+//     let userRef = db.collection("homeowners").doc(id);
+//     let userDoc = await userRef.get();
+//     let collection = "homeowners";
+//     if (!userDoc.exists) {
+//       // Try serviceProviders
+//       userRef = db.collection("serviceProviders").doc(id);
+//       userDoc = await userRef.get();
+//       collection = "serviceProviders";
 //     }
-
-//     catch(err){
-//         res.status(500).json({message:"Server error"})
+//     if (!userDoc.exists) {
+//       return res.status(404).json({ message: "User not found" });
 //     }
-// }
+//     const updates = {};
+//     if (name) updates.name = name;
+//     if (typeof address !== "undefined") updates.address = address;
+//     if (typeof profilePic !== "undefined") updates.profilePic = profilePic;
+//     if (typeof mobnumber !== "undefined") updates.mobnumber = mobnumber;
+//     if (collection === "homeowners" && typeof email !== "undefined") updates.email = email;
+//     if (typeof status !== "undefined") updates.status = status; // Allow admin to update status
 
-module.exports = { getdata, GetTotalBookings, GetUserDetails, DeleteUser, AdminUpdateUser, SuspendUser };
+//     await userRef.update(updates);
+//     const updatedDoc = await userRef.get();
+//     const userData = updatedDoc.data();
+//     delete userData.password;
+//     res.json({ user: { id, ...userData } });
+//   } catch (error) {
+//     res.status(500).json({ message: "Failed to update user", error: error.message });
+//   }
+// };
+
+
+module.exports = { getUserCounts, getAllBookingsWithStatus, GetUserDetails,GetServiceProviderDetails };

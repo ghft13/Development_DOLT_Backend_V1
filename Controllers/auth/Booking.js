@@ -1,4 +1,4 @@
-const { db, admin } = require("../../Config/FireBase");
+const { db,admin }=require("../../config/firebase.js")
 
 const createBooking = async (req, res) => {
   try {
@@ -22,7 +22,7 @@ const createBooking = async (req, res) => {
       user_name,
       user_email,
     } = req.body;
-    console.log("Received booking data:", req.body);
+    
 
     // ✅ Validate required fields
     if (!user_id || !service_id || !scheduled_date || !address) {
@@ -150,32 +150,29 @@ const getProviderBookings = async (req, res) => {
       }))
       .filter((booking) => {
         // ❌ Skip cancelled bookings
-        if (booking.isCancelled === true) {
-          return false;
-        }
+        if (booking.isCancelled === true) return false;
+
+        // ❌ Skip if provider is the same as the user (self-booking case)
+        if (booking.user_id === providerId) return false;
 
         // ✅ Show booking if it's NOT booked yet (available for all providers)
-        if (!booking.isBooked || booking.status === "pending") {
-          return true;
-        }
+        if (!booking.isBooked || booking.status === "pending") return true;
 
         // ✅ Show booking if it's booked by THIS provider
-        if (booking.isBooked && booking.provider_id === providerId) {
-          return true;
-        }
+        if (booking.isBooked && booking.provider_id === providerId) return true;
 
-        // ❌ Hide if booked by another provider
+        // ❌ Otherwise, hide it
         return false;
       });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: bookings.length,
       data: bookings,
     });
   } catch (error) {
     console.error("❌ Error fetching provider bookings:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Server error while fetching bookings",
     });
@@ -183,12 +180,13 @@ const getProviderBookings = async (req, res) => {
 };
 
 
+
 const UpdateBooking = async (req, res) => {
   const bookingId = req.params.id;
   const updatedData = req.body;
 
-  console.log("🔄 UpdateBooking called with ID:", bookingId);
-  console.log("🔄 Update data:", updatedData);
+  // console.log("🔄 UpdateBooking called with ID:", bookingId);
+  // console.log("🔄 Update data:", updatedData);
 
   try {
     const docRef = db.collection("bookings").doc(bookingId);
@@ -200,7 +198,7 @@ const UpdateBooking = async (req, res) => {
 
     const bookingData = doc.data();
 
-    // 🟢 Handle Accepted (Provider Assigned)
+    // 🟢 HANDLE ACCEPTED (Provider Assigned)
     if (updatedData.providerDetails) {
       const providerId = updatedData.providerDetails.provider_id;
 
@@ -208,17 +206,16 @@ const UpdateBooking = async (req, res) => {
         return res.status(400).json({ message: "Provider ID is missing" });
       }
 
-      // ✅ Check if booking is already accepted by another provider
+      // Check if another provider already accepted it
       if (bookingData.isBooked && bookingData.provider_id !== providerId) {
-        return res.status(409).json({ 
-          message: "This booking has already been accepted by another provider" 
+        return res.status(409).json({
+          message: "This booking has already been accepted by another provider",
         });
       }
 
-      // Update local booking fields
       updatedData.isBooked = true;
       updatedData.status = "accepted";
-      updatedData.provider_id = providerId; // store provider ID in booking
+      updatedData.provider_id = providerId;
       updatedData.acceptedAt = new Date().toISOString();
 
       const providerRef = db.collection("serviceProviders").doc(providerId);
@@ -232,7 +229,7 @@ const UpdateBooking = async (req, res) => {
         }),
       });
 
-      // Increment provider stats
+      // Provider stats
       await providerRef.update({
         total_Appointments: admin.firestore.FieldValue.increment(1),
       });
@@ -241,10 +238,10 @@ const UpdateBooking = async (req, res) => {
         acceptedBookings: admin.firestore.FieldValue.arrayUnion(bookingId),
       });
 
-      // Check if this user is a new client for the provider
+      // Check if the user is a new client
       const providerDoc = await providerRef.get();
       const servedClients = providerDoc.data()?.servedClients || [];
-      const userId = bookingData.user_id; // make sure matches your field name
+      const userId = bookingData.user_id;
 
       if (userId && !servedClients.includes(userId)) {
         await providerRef.update({
@@ -254,14 +251,33 @@ const UpdateBooking = async (req, res) => {
       }
     }
 
-    // ✅ Update booking in Firestore safely (filter out undefineds)
+    // 🟢 HANDLE COMPLETED JOB
+    if (updatedData.status === "completed") {
+      updatedData.completed_date = new Date().toISOString();
+
+      const providerId = bookingData.provider_id;
+      if (providerId) {
+        const providerRef = db.collection("serviceProviders").doc(providerId);
+
+        await providerRef.update({
+          completedBookings: admin.firestore.FieldValue.arrayUnion(bookingId),
+        });
+      }
+    }
+
+    // 🟢 CLEAN undefined fields before Firestore update
     const cleanData = Object.fromEntries(
       Object.entries(updatedData).filter(([_, v]) => v !== undefined)
     );
 
     await docRef.update(cleanData);
 
-    return res.status(200).json({ message: "Booking accepted successfully" });
+    return res.status(200).json({
+      message:
+        updatedData.status === "completed"
+          ? "Booking completed successfully"
+          : "Booking updated successfully",
+    });
   } catch (err) {
     console.error("❌ Error in UpdateBooking:", err);
     return res.status(500).json({
@@ -270,6 +286,7 @@ const UpdateBooking = async (req, res) => {
     });
   }
 };
+
 
 const CancelBooking = async (req, res) => {
   const { id } = req.params;

@@ -1,29 +1,26 @@
 const bcrypt = require("bcryptjs");
 const { generateTokens } = require("./tokenUtils");
-const { admin, db } = require("../../Config/FireBase");
+const { db,admin }=require("../../config/firebase.js")
+const { verifyRefreshToken } = require("./tokenUtils");
 
 const registerNewUser = async (req, res) => {
   const { fullName, email, password, phone, role } = req.body;
 
   try {
-    // ✅ Validate required fields
     if (!fullName || !email || !password || !phone || !role) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    // ✅ Validate role
     if (!["user", "provider"].includes(role)) {
       return res.status(400).json({ message: "Invalid role" });
     }
 
-    // ✅ Determine collection
     const userCollection = role === "user" ? "users" : "serviceProviders";
     const otherCollection = role === "user" ? "serviceProviders" : "users";
 
     const userRef = db.collection(userCollection);
     const otherRef = db.collection(otherCollection);
 
-    // ✅ Check if email or phone already exists
     const checks = await Promise.all([
       userRef.where("email", "==", email).get(),
       userRef.where("phone", "==", phone).get(),
@@ -37,24 +34,50 @@ const registerNewUser = async (req, res) => {
         .json({ message: "Email or phone number already exists" });
     }
 
-    // ✅ Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ✅ Prepare user data
+    // ✅ Pre-generate document ID
+    const newDocRef = db.collection(userCollection).doc();
+    const userId = newDocRef.id;
+
+    // ✅ Base data
     let newUserData = {
+      id: userId,
       fullName,
       email,
       phone,
       password: hashedPassword,
       role,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      bookings: [],
-      providerMapping: [],
+      isAlsoProvider: false,
+      isAlsoUser: false,
     };
 
+    if (role === "provider") {
+      newUserData.isAlsoProvider = true;
+      newUserData.totalClients = 0;
+      newUserData.totalAppointments = 0;
+      newUserData.earnings = 0;
+      newUserData.ratings = [];
+      newUserData.ratingCount = 0;
+      newUserData.averageRating = 0;
+      newUserData.professions = [];
+      newUserData.acceptedBookings = [];
+
+      // ✅ FIXED: Must be inside newUserData
+      newUserData.hourlyRate = 0;
+      newUserData.skills = [];
+      newUserData.serviceAreas = [];
+      newUserData.avatar = "";
+    }
+
+    // ✅ Role-based fields
     if (role === "user") {
+      newUserData.isAlsoUser = true;
+      newUserData.bookings = [];
       newUserData.orderIds = [];
     } else {
+      newUserData.isAlsoProvider = true;
       newUserData.totalClients = 0;
       newUserData.totalAppointments = 0;
       newUserData.earnings = 0;
@@ -65,36 +88,29 @@ const registerNewUser = async (req, res) => {
       newUserData.acceptedBookings = [];
     }
 
-    // ✅ Save to Firestore
-    const docRef = await db.collection(userCollection).add(newUserData);
+    // ✅ Save to Firestore (users OR serviceProviders)
+    await newDocRef.set(newUserData);
 
-    // ✅ Generate JWT tokens
-    const { token, refreshToken } = generateTokens(docRef.id, role);
+    // ✅ (Optional) mirror entry in other collection (if needed later)
+    // await db.collection(otherCollection).doc(userId).set({ id: userId, linkedRole: role });
 
-    // ✅ Send Refresh Token cookie
-    // res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: false, // change to true in production (requires https)
-    //   sameSite: "lax", // use "none" only with https
-    //   domain: "api.d0lt.local", // your dev domain
-    //   path: "/",
-    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    // });
+    const { token, refreshToken } = generateTokens(userId, role);
+
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true, // ✅ required on Render (uses HTTPS)
-      sameSite: "none", // ✅ required for cross-domain cookies
-      path: "/", // ✅ valid for all routes
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      secure: true, // use true in production
+      sameSite: "lax",
+      domain: "api.d0lt.local",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // ✅ Send response
-    res.status(201).json({
+    return res.status(201).json({
       message: "User registered successfully",
       user: {
-        id: docRef.id,
+        id: userId,
         ...newUserData,
-        password: undefined, // hide password
+        password: undefined,
       },
       token,
       role,
@@ -106,89 +122,90 @@ const registerNewUser = async (req, res) => {
 };
 
 // ✅ controllers/authController.js
-
 const loginUserAccount = async (req, res) => {
-  const { email, role } = req.body; // 👈 get both email and role
+  const { email, password, role } = req.body;
 
   try {
-    // 🧱 Check required fields
-    if (!email || !role) {
-      return res.status(400).json({ message: "Email and role are required" });
+    // Validate required fields
+    if (!email || !password || !role) {
+      return res
+        .status(400)
+        .json({ message: "Email, password and role are required" });
     }
 
     let userDoc = null;
     let userData = null;
 
-    // 🔍 Search based on role
+    // Find user based on role
     if (role === "user") {
-      const userSnapshot = await db
+      const snap = await db
         .collection("users")
         .where("email", "==", email)
         .get();
-      if (!userSnapshot.empty) {
-        userDoc = userSnapshot.docs[0];
+      if (!snap.empty) {
+        userDoc = snap.docs[0];
         userData = userDoc.data();
       }
     } else if (role === "provider") {
-      const providerSnapshot = await db
+      const snap = await db
         .collection("serviceProviders")
         .where("email", "==", email)
         .get();
-      if (!providerSnapshot.empty) {
-        userDoc = providerSnapshot.docs[0];
+      if (!snap.empty) {
+        userDoc = snap.docs[0];
         userData = userDoc.data();
       }
     } else if (role === "admin") {
-      const adminSnapshot = await db
+      const snap = await db
         .collection("admins")
         .where("email", "==", email)
         .get();
-      if (!adminSnapshot.empty) {
-        userDoc = adminSnapshot.docs[0];
+      if (!snap.empty) {
+        userDoc = snap.docs[0];
         userData = userDoc.data();
       }
     } else {
       return res.status(400).json({ message: "Invalid role provided" });
     }
 
-    // ❌ No user found
+    // No user found
     if (!userDoc) {
       return res
         .status(404)
         .json({ message: "User not found for given email and role" });
     }
 
-    // 🧠 Generate tokens
+    // 🔐 Check password
+    const isMatch = await bcrypt.compare(password, userData.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: "Incorrect password" });
+    }
+
+    // Generate tokens
     const { token, refreshToken } = generateTokens(userDoc.id, role);
 
-    // 🧾 Safe user object
+    // Safe user data (no password)
     const userSafe = {
       id: userDoc.id,
-      fullName: userData.fullName,
+      fullName: userData.fullName || "",
       email: userData.email,
       phone: userData.phone || "",
       role,
     };
 
-    // 🍪 Set refresh token cookie
-    // res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: false, // set true for production
-    //   sameSite: "lax",
-    //   domain: "api.d0lt.local",
-    //   path: "/",
-    //   maxAge: 7 * 24 * 60 * 60 * 1000,
-    // });
-
+    // Set refresh token cookie
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true, // ✅ required on Render (uses HTTPS)
-      sameSite: "none", // ✅ required for cross-domain cookies
-      path: "/", // ✅ valid for all routes
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      domain:
+        process.env.NODE_ENV === "production"
+          ? ".yourdomain.com"
+          : "api.d0lt.local",
     });
 
-    // ✅ Success
     return res.status(200).json({
       message: "Login successful",
       user: userSafe,
@@ -213,198 +230,397 @@ const logout = async (req, res) => {
   res.json({ success: true, message: "Logged out successfully" });
 };
 
-const sendOtpToUserEmail = async (req, res) => {
-  const { email, role } = req.body;
-
-  if (!email || !role) {
-    return res
-      .status(400)
-      .json({ message: "Please provide both email and role" });
-  }
-
+const BecomeProvider = async (req, res) => {
   try {
-    const db = admin.firestore(); // Assuming Firebase admin is initialized elsewhere
-    let userRef;
-    let userSnapshot;
+    const { userId } = req.body;
 
-    if (role === "homeowner") {
-      userRef = db.collection("homeowners").where("email", "==", email);
-      userSnapshot = await userRef.get();
-    } else if (role === "provider") {
-      userRef = db.collection("serviceProviders").where("email", "==", email);
-      userSnapshot = await userRef.get();
-    } else if (role === "admin") {
-      userRef = db.collection("admins").where("email", "==", email);
-      userSnapshot = await userRef.get();
-    } else {
-      return res.status(400).json({ message: "Invalid role provided" });
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID is required" });
     }
 
-    if (userSnapshot.empty) {
+    const userRef = db.collection("users").doc(userId);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
       return res
         .status(404)
-        .json({ message: "User not found. Please sign up first." });
+        .json({ success: false, message: "User not found" });
     }
 
-    // ✅ Include role in the response
-    return res.status(200).json({
-      message: "User exists. Proceed with OTP verification.",
-      role, // <--- sent back to frontend
-    });
-  } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Server error. Please try again later." });
-  }
-};
+    const userData = userSnap.data();
+    const { fullName, email, phone, password } = userData; // only essentials
 
-const createServiceProvider = async (req, res) => {
-  const { name, email, password, mobnumber, professions } = req.body;
+    const providerRef = db.collection("serviceProviders").doc(userId);
+    const providerSnap = await providerRef.get();
 
-  try {
-    if (
-      !name ||
-      !email ||
-      !password ||
-      !mobnumber ||
-      !professions ||
-      !Array.isArray(professions) ||
-      professions.length === 0
-    ) {
-      return res.status(400).json({
-        message:
-          "Name, email, password, mobile number, and at least one profession are required",
+    // ✅ Create provider entry if not exists
+    if (!providerSnap.exists) {
+      await providerRef.set({
+        id: userId,
+        fullName,
+        email,
+        phone,
+        password,
+        role: "provider",
+        isAlsoUser: true,
+        isAlsoProvider: true,
+        totalClients: 0,
+        totalAppointments: 0,
+        earnings: 0,
+        ratings: [],
+        ratingCount: 0,
+        averageRating: 0,
+        professions: [],
+        acceptedBookings: [],
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      await providerRef.update({
+        fullName,
+        email,
+        phone,
+        // role: "provider",
+        isAlsoUser: true,
       });
     }
 
-    if (password.length < 6) {
-      return res
-        .status(400)
-        .json({ message: "Password must be at least 6 characters long" });
-    }
+    // ✅ Mark user document as also provider
+    await userRef.update({ isAlsoProvider: true });
 
-    // Check if email or mobile already exists in both collections
-    const homeownersEmailSnapshot = await db
-      .collection("homeowners")
-      .where("email", "==", email)
-      .get();
-
-    const serviceProvidersEmailSnapshot = await db
-      .collection("serviceProviders")
-      .where("email", "==", email)
-      .get();
-
-    if (
-      !homeownersEmailSnapshot.empty ||
-      !serviceProvidersEmailSnapshot.empty
-    ) {
-      return res.status(400).json({ message: "Email already exists" });
-    }
-
-    const homeownersNumberSnapshot = await db
-      .collection("homeowners")
-      .where("mobnumber", "==", mobnumber)
-      .get();
-
-    const serviceProvidersNumberSnapshot = await db
-      .collection("serviceProviders")
-      .where("mobnumber", "==", mobnumber)
-      .get();
-
-    if (
-      !homeownersNumberSnapshot.empty ||
-      !serviceProvidersNumberSnapshot.empty
-    ) {
-      return res.status(400).json({ message: "Mobile number already exists" });
-    }
-
-    // Create service provider
-    const userRef = db.collection("serviceProviders").doc();
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const newProvider = {
-      userid: userRef.id,
-      name: name.trim(),
-      email: email.trim(),
-      mobnumber: mobnumber.trim(),
-      password: hashedPassword,
-      role: "provider",
-      status: "active",
-      professions: professions, // <-- store professions array
-      bookingIds: [],
-      total_clients: 0,
-      total_Appointments: 0,
-      earnings: 0,
-      Rating: 0,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      passwordChanged: false,
-    };
-
-    await userRef.set(newProvider);
-
-    // Return success without sensitive data
-    const responseData = {
-      userid: userRef.id,
-      name: newProvider.name,
-      email: newProvider.email,
-      mobnumber: newProvider.mobnumber,
-      professions: newProvider.professions,
-      role: newProvider.role,
-      status: newProvider.status,
-    };
-
-    res.status(201).json({
-      message: "Service provider created successfully",
-      provider: responseData,
+    return res.json({
+      success: true,
+      message: "User is now also a provider!",
     });
-  } catch (error) {
-    res.status(500).json({ message: "Server error", error: error.message });
+  } catch (err) {
+    console.error("❌ Become Provider Error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal Server Error" });
   }
 };
 
-const updateUserProfile = async (req, res) => {
-  const { id } = req.params;
-  const { name, email, mobnumber, address, profilePic } = req.body;
-
+const BecomeUser = async (req, res) => {
   try {
-    // Find user in both collections
-    let userRef = db.collection("homeowners").doc(id);
-    let userDoc = await userRef.get();
-    let collection = "homeowners";
-    if (!userDoc.exists) {
-      userRef = db.collection("serviceProviders").doc(id);
-      userDoc = await userRef.get();
-      collection = "serviceProviders";
-    }
-    if (!userDoc.exists) {
-      return res.status(404).json({ message: "User not found" });
-    }
-    const updates = {};
-    if (name) updates.name = name;
-    if (typeof address !== "undefined") updates.address = address;
-    if (typeof profilePic !== "undefined") updates.profilePic = profilePic;
-    if (typeof mobnumber !== "undefined") updates.mobnumber = mobnumber;
-    // Only allow email change for homeowners
-    if (collection === "homeowners" && typeof email !== "undefined")
-      updates.email = email;
+    const { userId } = req.body;
 
-    await userRef.update(updates);
-    const updatedDoc = await userRef.get();
-    const userData = updatedDoc.data();
-    delete userData.password;
-    res.json({ user: { id, ...userData } });
+    if (!userId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID is required" });
+    }
+
+    const providerRef = db.collection("serviceProviders").doc(userId);
+    const providerSnap = await providerRef.get();
+
+    if (!providerSnap.exists) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Provider not found" });
+    }
+
+    const providerData = providerSnap.data();
+    const { fullName, email, phone, password } = providerData; // only essentials
+
+    const userRef = db.collection("users").doc(userId);
+    const userSnap = await userRef.get();
+
+    // ✅ Create user entry if not exists
+    if (!userSnap.exists) {
+      await userRef.set({
+        id: userId,
+        fullName,
+        email,
+        password,
+        phone,
+        role: "user",
+        isAlsoProvider: true,
+        isAlsoUser: true,
+        bookings: [],
+        orderIds: [],
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      await userRef.update({
+        fullName,
+        email,
+        phone,
+        // role: "user",
+        isAlsoProvider: true,
+      });
+    }
+
+    // ✅ Mark provider document as also user
+    await providerRef.update({ isAlsoUser: true });
+
+    return res.json({
+      success: true,
+      message: "Provider is now also a user!",
+    });
+  } catch (err) {
+    console.error("❌ Become User Error:", err);
+    return res
+      .status(500)
+      .json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+const switchRole = async (req, res) => {
+  try {
+    const { userId, newRole } = req.body;
+
+    if (!userId || !newRole) {
+      return res
+        .status(400)
+        .json({ success: false, message: "User ID and new role are required" });
+    }
+
+    const userRef = db.collection("users").doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    await userRef.update({ role: newRole });
+
+    return res.status(200).json({
+      success: true,
+      message: `Role switched to ${newRole}`,
+      updatedRole: newRole,
+    });
   } catch (error) {
+    console.error("Error switching role:", error);
     res
       .status(500)
-      .json({ message: "Failed to update profile", error: error.message });
+      .json({ success: false, message: "Server error", error: error.message });
+  }
+};
+const VerifyUser = async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+
+  if (!refreshToken) {
+    return res
+      .status(401)
+      .json({ message: "Not authenticated — token unavailable" });
+  }
+
+  try {
+    const userData = verifyRefreshToken(refreshToken);
+
+    if (!userData || !userData.id) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    // console.log("🔥 Role from Token:", userData.role);
+
+    // Firestore references
+    const userRef = db.collection("users").doc(userData.id);
+    const providerRef = db.collection("serviceProviders").doc(userData.id);
+    const adminRef = db.collection("admins").doc(userData.id);
+
+    // Fetch all in parallel
+    const [userSnap, providerSnap, adminSnap] = await Promise.all([
+      userRef.get(),
+      providerRef.get(),
+      adminRef.get(),
+    ]);
+
+    let doc = null;
+
+    // 🔥 PRIORITY BASED ON TOKEN ROLE
+    if (userData.role === "admin") {
+      if (adminSnap.exists) {
+        doc = adminSnap.data();
+      }
+    } else if (userData.role === "provider") {
+      if (providerSnap.exists) {
+        doc = providerSnap.data();
+      }
+    } else if (userData.role === "user") {
+      if (userSnap.exists) {
+        doc = userSnap.data();
+      }
+    }
+
+    // 🛑 If role didn't match OR fallback needed
+    if (!doc) {
+      if (userSnap.exists) {
+        doc = userSnap.data();
+      } else if (providerSnap.exists) {
+        doc = providerSnap.data();
+      } else if (adminSnap.exists) {
+        doc = adminSnap.data();
+      } else {
+        return res.status(404).json({ message: "User not found" });
+      }
+    }
+
+    return res.json({
+      user: {
+        id: userData.id,
+        email: doc.email,
+        fullName: doc.fullName || doc.name || "Admin",
+        role: doc.role, // 🔥 REAL ROLE FROM COLLECTION
+        isAlsoUser: doc.isAlsoUser ?? false,
+        isAlsoProvider: doc.isAlsoProvider ?? false,
+      },
+    });
+  } catch (err) {
+    console.error("❌ Token verification failed:", err);
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+const getLoggedInProviderData = async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: "Not authenticated — no token" });
+  }
+
+  try {
+    const userData = verifyRefreshToken(refreshToken);
+
+    if (!userData || !userData.id) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    const id = userData.id;
+
+    const userRef = db.collection("users").doc(id);
+    const providerRef = db.collection("serviceProviders").doc(id);
+    const adminRef = db.collection("admins").doc(id);
+
+    const [userSnap, providerSnap, adminSnap] = await Promise.all([
+      userRef.get(),
+      providerRef.get(),
+      adminRef.get(),
+    ]);
+
+    let data = null;
+
+    // First try by role
+    if (userData.role === "admin" && adminSnap.exists) data = adminSnap.data();
+    if (userData.role === "provider" && providerSnap.exists)
+      data = providerSnap.data();
+    if (userData.role === "user" && userSnap.exists) data = userSnap.data();
+
+    // Fallback
+    if (!data) {
+      if (userSnap.exists) data = userSnap.data();
+      else if (providerSnap.exists) data = providerSnap.data();
+      else if (adminSnap.exists) data = adminSnap.data();
+      else return res.status(404).json({ message: "User not found" });
+    }
+
+    // Count completed bookings
+    const bookingsRef = db.collection("bookings");
+    const completedBookingsQuery = await bookingsRef
+      .where("provider_id", "==", id)
+      .where("status", "==", "completed")
+      .get();
+
+    const completedBookingsCount = completedBookingsQuery.size;
+
+    let totalEarnings = 0;
+    completedBookingsQuery.forEach((doc) => {
+      const booking = doc.data();
+      totalEarnings += booking.total_amount || 0;
+    });
+
+    // ✅ Return the updated structure with all provider fields accessible
+    return res.json({
+      id,
+      role: data.role,
+      name: data.fullName || data.name || "No Name",
+      email: data.email,
+      phone: data.phone || null,
+      address: data.address || null,
+      createdAt: data.createdAt || null,
+      membership: data.membership || null,
+      isAlsoUser: data.isAlsoUser ?? false,
+      isAlsoProvider: data.isAlsoProvider ?? false,
+      completedBookings: completedBookingsCount,
+      totalEarnings: totalEarnings,
+      
+      // ✅ Include these at top level for easy access
+      avatar: data.avatar || "",
+      hourlyRate: data.hourlyRate || 0,
+      skills: data.skills || [],
+      serviceAreas: data.serviceAreas || [],
+      
+      extra: data, // original firestore document
+    });
+  } catch (err) {
+    console.error("❌ Error fetching logged-in user:", err);
+    return res.status(401).json({ message: "Invalid token" });
+  }
+};
+
+const updateProviderProfile = async (req, res) => {
+  try {
+    const userId = req.body.userId;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized user" });
+    }
+
+    const { name, email, avatar, hourlyRate, skills, serviceAreas } = req.body;
+
+    const providerRef = db.collection("serviceProviders").doc(userId);
+    const providerSnap = await providerRef.get();
+
+    if (!providerSnap.exists) {
+      return res.status(404).json({ message: "Provider profile not found" });
+    }
+
+    const updates = {};
+
+    if (name) updates.fullName = name;
+    if (email) updates.email = email;
+    if (avatar !== undefined) updates.avatar = avatar;
+    if (hourlyRate !== undefined) updates.hourlyRate = hourlyRate;
+
+    if (skills !== undefined) {
+      if (!Array.isArray(skills)) {
+        return res.status(400).json({ message: "Skills must be an array" });
+      }
+      updates.skills = skills;
+    }
+
+    if (serviceAreas !== undefined) {
+      if (!Array.isArray(serviceAreas)) {
+        return res
+          .status(400)
+          .json({ message: "Service areas must be an array" });
+      }
+      updates.serviceAreas = serviceAreas;
+    }
+
+    await providerRef.update(updates);
+
+    return res.json({
+      message: "Profile updated successfully",
+      updated: updates,
+    });
+  } catch (error) {
+    console.error("Profile Update Error:", error);
+    return res.status(500).json({ message: "Something went wrong" });
   }
 };
 
 module.exports = {
   registerNewUser,
   loginUserAccount,
-  sendOtpToUserEmail,
   logout,
-  createServiceProvider,
-  updateUserProfile,
+  BecomeProvider,
+  BecomeUser,
+  switchRole,
+  VerifyUser,
+  getLoggedInProviderData,
+  updateProviderProfile,
 };
