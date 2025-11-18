@@ -1,4 +1,4 @@
-// const { db,admin }=require("../../config/firebase.js")
+// const { db,admin }=require("../../Config/FireBase.js")
 
 // // Create a new marketplace order after payment success
 // const createMarketplaceOrder = async (req, res) => {

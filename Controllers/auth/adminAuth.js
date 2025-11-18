@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { db,admin }=require("../../config/firebase.js")
+const { db,admin }=require("../../Config/FireBase.js")
 
 const createDefaultAdmin = async () => {
   try {

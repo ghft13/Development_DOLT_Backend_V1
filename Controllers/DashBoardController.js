@@ -1,4 +1,4 @@
-const { db,admin }=require("../config/firebase.js")
+const { db,admin }=require("../Config/FireBase.js")
 
 const getUserCounts = async (req, res) => {
   try {

@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
 const { generateTokens } = require("./tokenUtils");
-const { db,admin }=require("../../config/firebase.js")
+const { db,admin }=require("../../Config/FireBase.js")
 const { verifyRefreshToken } = require("./tokenUtils");
 
 const registerNewUser = async (req, res) => {

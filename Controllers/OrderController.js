@@ -1,4 +1,4 @@
-// const { db,admin }=require("../../config/firebase.js")
+// const { db,admin }=require("../../Config/FireBase.js")
 // const stripe = require("stripe")(process.env.STRIPE_API_KEY);
 
 // const createOrder = async (req, res) => {

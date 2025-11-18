@@ -1,4 +1,4 @@
-// const { db,admin }=require("../../config/firebase.js")
+// const { db,admin }=require("../../Config/FireBase.js")
 
 // // Generic image upload endpoint
 // async function uploadImage(req, res) {
