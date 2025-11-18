@@ -1,4 +1,4 @@
-const { db } = require("../../config/firebase.js");
+const { db } = require("../../Config/FireBase.js");
 
 const serviceCollection = db.collection("services");
 
