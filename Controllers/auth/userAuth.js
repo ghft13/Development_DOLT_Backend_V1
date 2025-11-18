@@ -99,8 +99,8 @@ const registerNewUser = async (req, res) => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true, // use true in production
-      sameSite: "lax",
-      domain: "api.d0lt.local",
+      sameSite: "none",
+      // domain: "api.d0lt.local",
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -197,13 +197,13 @@ const loginUserAccount = async (req, res) => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
-      sameSite: "lax",
+      sameSite: "none",
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      domain:
-        process.env.NODE_ENV === "production"
-          ? ".yourdomain.com"
-          : "api.d0lt.local",
+      // domain:
+      //   process.env.NODE_ENV === "production"
+      //     ? ".yourdomain.com"
+      //     : "api.d0lt.local",
     });
 
     return res.status(200).json({
