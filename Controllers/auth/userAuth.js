@@ -415,7 +415,6 @@ const VerifyUser = async (req, res) => {
       return res.status(401).json({ message: "Invalid token" });
     }
 
-    // console.log("🔥 Role from Token:", userData.role);
 
     // Firestore references
     const userRef = db.collection("users").doc(userData.id);

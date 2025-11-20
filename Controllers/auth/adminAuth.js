@@ -38,13 +38,13 @@ const createDefaultAdmin = async () => {
           createdAt: new Date().toISOString(),
         });
 
-     //   console.log(`✅ Created admin: ${admin.name}`);
+  
       } else {
-      //  console.log(`ℹ️ Admin ${admin.name} already exists.`);
+
       }
     }
 
-    console.log("✅ Admin setup completed.");
+
   } catch (error) {
     console.error("❌ Error creating admins:", error);
   }

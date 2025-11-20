@@ -185,8 +185,6 @@ const UpdateBooking = async (req, res) => {
   const bookingId = req.params.id;
   const updatedData = req.body;
 
-  // console.log("🔄 UpdateBooking called with ID:", bookingId);
-  // console.log("🔄 Update data:", updatedData);
 
   try {
     const docRef = db.collection("bookings").doc(bookingId);

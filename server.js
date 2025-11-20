@@ -4,7 +4,6 @@ const cors = require("cors");
 const authRoutes = require("./Routes/authRoutes.js");
 const AdminDashboard = require("./Routes/AdminDashboard.js");
 const BookingRoute = require("./Routes/BookingRoute.js");
-const MarketplaceRoute = require("./Routes/MarketplaceRoute.js");
 const serviceRoutes = require("./Routes/ServiceRoutes.js");
 const MessageRoute = require("./Routes/MessageRoute.js");
 const { createDefaultAdmin } = require("./Controllers/auth/adminAuth.js");
@@ -45,7 +44,6 @@ app.get("/", function (req, res) {
 });
 
 
-// app.use("/api/services", serviceRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/products", ProductsRoute);
 app.use("/api/services", serviceRoutes);
@@ -60,9 +58,7 @@ app.use("/api/messages",MessageRoute);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, "0.0.0.0",async () => {
   await createDefaultAdmin();
- 
-
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`✅ Server running on port`);
 });
 
 
