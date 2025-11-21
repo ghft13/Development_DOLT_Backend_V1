@@ -100,7 +100,7 @@ const registerNewUser = async (req, res) => {
       httpOnly: true,
       secure: true, // use true in production
       sameSite: "none",
-      // domain: "api.d0lt.local",
+   domain: ".onrender.com",
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -200,10 +200,7 @@ const loginUserAccount = async (req, res) => {
       sameSite: "none",
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      // domain:
-      //   process.env.NODE_ENV === "production"
-      //     ? ".yourdomain.com"
-      //     : "api.d0lt.local",
+     domain: ".onrender.com",
     });
 
     return res.status(200).json({
