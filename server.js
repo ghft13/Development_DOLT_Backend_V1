@@ -22,7 +22,6 @@ const allowedOrigins = [
   "https://deploy-dolt.netlify.app",
   "https://d0lt-getitdone-clone.onrender.com",
   "https://dolt-dashboard-clone.onrender.com",
-   
   "http://main.d0lt.local:3000",
   "http://dashboard.d0lt.local:3001"
 
@@ -66,14 +65,8 @@ app.get("/", (req, res) => {
   });
 });
 
-// ✅ 6. DEBUG ENDPOINT - to verify cookies are being received
-app.get("/api/debug/cookies", (req, res) => {
-  console.log("🍪 Cookies received:", req.cookies);
-  res.json({
-    cookiesReceived: req.cookies,
-    message: "Check console for cookie debug info"
-  });
-});
+
+
 
 // ✅ 7. ROUTES
 app.use("/api/auth", authRoutes);

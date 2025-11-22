@@ -415,29 +415,27 @@ const switchRole = async (req, res) => {
   }
 };
 const VerifyUser = async (req, res) => {
-  console.log("🟡 VerifyUser called");
+  
 
   const refreshToken = req.cookies.refreshToken;
-  console.log("🔍 Refresh Token Received:", refreshToken ? "YES" : "NO");
+  
 
   if (!refreshToken) {
-    console.log("❌ No refresh token found in cookies");
+    
     return res
       .status(401)
       .json({ message: "Not authenticated — token unavailable" });
   }
 
   try {
-    console.log("🔐 Verifying refresh token...");
+  
     const userData = verifyRefreshToken(refreshToken);
-    console.log("🔓 Token Decoded Payload:", userData);
-
     if (!userData || !userData.id) {
-      console.log("❌ Invalid token payload, no user ID found");
+
       return res.status(401).json({ message: "Invalid token" });
     }
 
-    console.log(`📁 Checking Firestore for user ID: ${userData.id}`);
+
 
     const userRef = db.collection("users").doc(userData.id);
     const providerRef = db.collection("serviceProviders").doc(userData.id);
@@ -449,63 +447,53 @@ const VerifyUser = async (req, res) => {
       adminRef.get(),
     ]);
 
-    console.log("📄 Firestore Docs Status =>", {
-      userExists: userSnap.exists,
-      providerExists: providerSnap.exists,
-      adminExists: adminSnap.exists,
-    });
+ 
 
     let doc = null;
 
-    // 🔥 PRIORITY BASED ON TOKEN ROLE
-    console.log("🌀 Priority lookup based on token role:", userData.role);
 
     if (userData.role === "admin") {
       if (adminSnap.exists) {
-        console.log("✔ Admin found");
+      
         doc = adminSnap.data();
       } else {
-        console.log("⚠ Admin role in token but no admin document found");
+        
       }
     } else if (userData.role === "provider") {
       if (providerSnap.exists) {
-        console.log("✔ Provider found");
+   
         doc = providerSnap.data();
       } else {
-        console.log("⚠ Provider role in token but no provider document found");
+ 
       }
     } else if (userData.role === "user") {
       if (userSnap.exists) {
-        console.log("✔ User found");
+ 
         doc = userSnap.data();
       } else {
-        console.log("⚠ User role in token but no user document found");
+
       }
     }
 
     // 🛑 Fallback search if no match by priority
     if (!doc) {
-      console.log("🔁 Performing fallback search across collections...");
+
       if (userSnap.exists) {
         doc = userSnap.data();
-        console.log("✔ Fallback: found in Users collection");
+    
       } else if (providerSnap.exists) {
         doc = providerSnap.data();
-        console.log("✔ Fallback: found in Providers collection");
+     
       } else if (adminSnap.exists) {
         doc = adminSnap.data();
-        console.log("✔ Fallback: found in Admins collection");
+   
       } else {
-        console.log("❌ No matching user found in any collection");
+     
         return res.status(404).json({ message: "User not found" });
       }
     }
 
-    console.log("🎉 Final user object prepared:", {
-      id: userData.id,
-      email: doc.email,
-      role: doc.role,
-    });
+  
 
     return res.json({
       user: {
@@ -519,7 +507,7 @@ const VerifyUser = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("❌ Token verification failed:", err);
+ 
     return res.status(401).json({ message: "Invalid token" });
   }
 };
