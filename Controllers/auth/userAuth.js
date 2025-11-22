@@ -108,8 +108,8 @@ const registerNewUser = async (req, res) => {
 
     res.cookie("refreshToken", refreshToken, {
   httpOnly: true,
-  secure: false, // ❗ must be false on localhost
-  sameSite: "lax", // or "none" if using different ports or domains
+  secure: true, // ❗ must be false on localhost
+  sameSite: "none", // or "none" if using different ports or domains
   path: "/",
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 });
@@ -663,6 +663,18 @@ const updateProviderProfile = async (req, res) => {
   }
 };
 
+
+const logoutUser = (req, res) => {
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: false,      // true in prod
+    sameSite: "lax",    // "none" in prod
+    path: "/",
+  });
+
+  return res.status(200).json({ message: "Logout successful" });
+};
+
 module.exports = {
   registerNewUser,
   loginUserAccount,
@@ -673,4 +685,5 @@ module.exports = {
   VerifyUser,
   getLoggedInProviderData,
   updateProviderProfile,
+  logoutUser
 };

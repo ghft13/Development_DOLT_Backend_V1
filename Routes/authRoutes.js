@@ -9,7 +9,8 @@ const {
   switchRole,
   VerifyUser,
   updateProviderProfile,
-  getLoggedInProviderData
+  getLoggedInProviderData,
+  logoutUser
 } = require("../Controllers/auth/userAuth");
 
 
@@ -24,4 +25,5 @@ router.post("/switch-role",switchRole)
 router.get("/verify",VerifyUser)
 router.get("/me", getLoggedInProviderData);
 router.put("/update-profile",  updateProviderProfile);
+router.post("/logout", logoutUser);
 module.exports = router;
