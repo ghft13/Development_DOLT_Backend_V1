@@ -22,8 +22,10 @@ const allowedOrigins = [
   "https://deploy-dolt.netlify.app",
   "https://d0lt-getitdone-clone.onrender.com",
   "https://dolt-dashboard-clone.onrender.com",
-  "http://localhost:3000",      // ✅ For local testing
-  "http://localhost:3001",      // ✅ For local testing
+   
+  "http://main.d0lt.local:3000",
+  "http://dashboard.d0lt.local:3001"
+
 ];
 
 // ✅ 2. MIDDLEWARE ORDER IS CRITICAL

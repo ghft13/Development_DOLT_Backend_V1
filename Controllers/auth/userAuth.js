@@ -96,14 +96,24 @@ const registerNewUser = async (req, res) => {
 
     const { token, refreshToken } = generateTokens(userId, role);
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true, // use true in production
-      sameSite: "lax",
+    // res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: true, // use true in production
+    //   sameSite: "lax",
     
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    //   path: "/",
+    //   maxAge: 7 * 24 * 60 * 60 * 1000,
+    // });
+
+
+    res.cookie("refreshToken", refreshToken, {
+  httpOnly: true,
+  secure: false, // ❗ must be false on localhost
+  sameSite: "lax", // or "none" if using different ports or domains
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+});
+
 
     return res.status(201).json({
       message: "User registered successfully",
@@ -194,14 +204,22 @@ const loginUserAccount = async (req, res) => {
     };
 
     // Set refresh token cookie
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+    // res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: true,
+    //   sameSite: "lax",
+    //   path: "/",
+    //   maxAge: 7 * 24 * 60 * 60 * 1000,
      
-    });
+    // });
+
+    res.cookie("refreshToken", refreshToken, {
+  httpOnly: true,
+ secure: true,
+sameSite: "none",
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+});
 
     return res.status(200).json({
       message: "Login successful",
