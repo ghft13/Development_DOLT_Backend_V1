@@ -99,8 +99,8 @@ const registerNewUser = async (req, res) => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true, // use true in production
-      sameSite: "none",
-      domain: ".onrender.com",
+      sameSite: "lax",
+    
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -197,10 +197,10 @@ const loginUserAccount = async (req, res) => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
-      sameSite: "none",
+      sameSite: "lax",
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
-      domain: ".onrender.com",
+     
     });
 
     return res.status(200).json({

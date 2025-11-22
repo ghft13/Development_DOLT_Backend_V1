@@ -17,7 +17,6 @@ const allowedOrigins = [
   "https://deploy-dolt.netlify.app",
   "https://d0lt-getitdone-clone.onrender.com",
   "https://dolt-dashboard-clone.onrender.com",
-
 ];
   // "http://dashboard.d0lt.local:3001",
   // "http://main.d0lt.local:3000",
