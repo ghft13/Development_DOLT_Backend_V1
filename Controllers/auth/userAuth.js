@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
 const { generateTokens } = require("./tokenUtils");
-const { db,admin }=require("../../Config/FireBase.js")
+const { db, admin } = require("../../Config/FireBase.js");
 const { verifyRefreshToken } = require("./tokenUtils");
 
 const registerNewUser = async (req, res) => {
@@ -100,20 +100,27 @@ const registerNewUser = async (req, res) => {
     //   httpOnly: true,
     //   secure: true, // use true in production
     //   sameSite: "lax",
-    
+
     //   path: "/",
     //   maxAge: 7 * 24 * 60 * 60 * 1000,
     // });
 
+    //     res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //   secure: true, // ❗ must be false on localhost
+    //   sameSite: "none", // or "none" if using different ports or domains
+    //   path: "/",
+    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    // });
 
     res.cookie("refreshToken", refreshToken, {
-  httpOnly: true,
-  secure: true, // ❗ must be false on localhost
-  sameSite: "none", // or "none" if using different ports or domains
-  path: "/",
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-});
-
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax", // 🔥 this makes it FIRST-PARTY
+      domain: ".onrender.com", // 🔥 shared across all your render subdomains
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
 
     return res.status(201).json({
       message: "User registered successfully",
@@ -203,23 +210,22 @@ const loginUserAccount = async (req, res) => {
       role,
     };
 
-    // Set refresh token cookie
-    // res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: true,
-    //   sameSite: "lax",
-    //   path: "/",
-    //   maxAge: 7 * 24 * 60 * 60 * 1000,
-     
-    // });
-
     res.cookie("refreshToken", refreshToken, {
-  httpOnly: true,
- secure: true,
-sameSite: "none",
-  path: "/",
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-});
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax", // 🔥 this makes it FIRST-PARTY
+      domain: ".onrender.com", // 🔥 shared across all your render subdomains
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+
+    //     res.cookie("refreshToken", refreshToken, {
+    //   httpOnly: true,
+    //  secure: true,
+    // sameSite: "none",
+    //   path: "/",
+    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    // });
 
     return res.status(200).json({
       message: "Login successful",
@@ -415,27 +421,19 @@ const switchRole = async (req, res) => {
   }
 };
 const VerifyUser = async (req, res) => {
-  
-
   const refreshToken = req.cookies.refreshToken;
-  
 
   if (!refreshToken) {
-    
     return res
       .status(401)
       .json({ message: "Not authenticated — token unavailable" });
   }
 
   try {
-  
     const userData = verifyRefreshToken(refreshToken);
     if (!userData || !userData.id) {
-
       return res.status(401).json({ message: "Invalid token" });
     }
-
-
 
     const userRef = db.collection("users").doc(userData.id);
     const providerRef = db.collection("serviceProviders").doc(userData.id);
@@ -447,53 +445,37 @@ const VerifyUser = async (req, res) => {
       adminRef.get(),
     ]);
 
- 
-
     let doc = null;
-
 
     if (userData.role === "admin") {
       if (adminSnap.exists) {
-      
         doc = adminSnap.data();
       } else {
-        
       }
     } else if (userData.role === "provider") {
       if (providerSnap.exists) {
-   
         doc = providerSnap.data();
       } else {
- 
       }
     } else if (userData.role === "user") {
       if (userSnap.exists) {
- 
         doc = userSnap.data();
       } else {
-
       }
     }
 
     // 🛑 Fallback search if no match by priority
     if (!doc) {
-
       if (userSnap.exists) {
         doc = userSnap.data();
-    
       } else if (providerSnap.exists) {
         doc = providerSnap.data();
-     
       } else if (adminSnap.exists) {
         doc = adminSnap.data();
-   
       } else {
-     
         return res.status(404).json({ message: "User not found" });
       }
     }
-
-  
 
     return res.json({
       user: {
@@ -505,13 +487,10 @@ const VerifyUser = async (req, res) => {
         isAlsoProvider: doc.isAlsoProvider ?? false,
       },
     });
-
   } catch (err) {
- 
     return res.status(401).json({ message: "Invalid token" });
   }
 };
-
 
 const getLoggedInProviderData = async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
@@ -584,13 +563,13 @@ const getLoggedInProviderData = async (req, res) => {
       isAlsoProvider: data.isAlsoProvider ?? false,
       completedBookings: completedBookingsCount,
       totalEarnings: totalEarnings,
-      
+
       // ✅ Include these at top level for easy access
       avatar: data.avatar || "",
       hourlyRate: data.hourlyRate || 0,
       skills: data.skills || [],
       serviceAreas: data.serviceAreas || [],
-      
+
       extra: data, // original firestore document
     });
   } catch (err) {
@@ -651,12 +630,11 @@ const updateProviderProfile = async (req, res) => {
   }
 };
 
-
 const logoutUser = (req, res) => {
   res.clearCookie("refreshToken", {
     httpOnly: true,
-    secure: false,      // true in prod
-    sameSite: "lax",    // "none" in prod
+    secure: false, // true in prod
+    sameSite: "lax", // "none" in prod
     path: "/",
   });
 
@@ -673,5 +651,5 @@ module.exports = {
   VerifyUser,
   getLoggedInProviderData,
   updateProviderProfile,
-  logoutUser
+  logoutUser,
 };
