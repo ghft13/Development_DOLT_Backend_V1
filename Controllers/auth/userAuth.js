@@ -104,7 +104,7 @@ const registerNewUser = async (req, res) => {
       httpOnly: true,
       secure: true,
       sameSite: "none", // 🔥 this makes it FIRST-PARTY
-      domain: ".onrender.com", // 🔥 shared across all your render subdomains
+    //  domain: ".onrender.com", // 🔥 shared across all your render subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -201,7 +201,7 @@ const loginUserAccount = async (req, res) => {
       httpOnly: true,
       secure: true,
       sameSite: "none", // 🔥 this makes it FIRST-PARTY
-     domain: ".onrender.com", // 🔥 shared across all your render subdomains
+  //   domain: ".onrender.com", // 🔥 shared across all your render subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -401,77 +401,7 @@ const switchRole = async (req, res) => {
       .json({ success: false, message: "Server error", error: error.message });
   }
 };
-const VerifyUser = async (req, res) => {
-  const refreshToken = req.cookies.refreshToken;
-
-  if (!refreshToken) {
-    return res
-      .status(401)
-      .json({ message: "Not authenticated — token unavailable" });
-  }
-
-  try {
-    const userData = verifyRefreshToken(refreshToken);
-    if (!userData || !userData.id) {
-      return res.status(401).json({ message: "Invalid token" });
-    }
-
-    const userRef = db.collection("users").doc(userData.id);
-    const providerRef = db.collection("serviceProviders").doc(userData.id);
-    const adminRef = db.collection("admins").doc(userData.id);
-
-    const [userSnap, providerSnap, adminSnap] = await Promise.all([
-      userRef.get(),
-      providerRef.get(),
-      adminRef.get(),
-    ]);
-
-    let doc = null;
-
-    if (userData.role === "admin") {
-      if (adminSnap.exists) {
-        doc = adminSnap.data();
-      } else {
-      }
-    } else if (userData.role === "provider") {
-      if (providerSnap.exists) {
-        doc = providerSnap.data();
-      } else {
-      }
-    } else if (userData.role === "user") {
-      if (userSnap.exists) {
-        doc = userSnap.data();
-      } else {
-      }
-    }
-
-    // 🛑 Fallback search if no match by priority
-    if (!doc) {
-      if (userSnap.exists) {
-        doc = userSnap.data();
-      } else if (providerSnap.exists) {
-        doc = providerSnap.data();
-      } else if (adminSnap.exists) {
-        doc = adminSnap.data();
-      } else {
-        return res.status(404).json({ message: "User not found" });
-      }
-    }
-
-    return res.json({
-      user: {
-        id: userData.id,
-        email: doc.email,
-        fullName: doc.fullName || doc.name || "Admin",
-        role: doc.role,
-        isAlsoUser: doc.isAlsoUser ?? false,
-        isAlsoProvider: doc.isAlsoProvider ?? false,
-      },
-    });
-  } catch (err) {
-    return res.status(401).json({ message: "Invalid token" });
-  }
-};
+ 
 
 const getLoggedInProviderData = async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
