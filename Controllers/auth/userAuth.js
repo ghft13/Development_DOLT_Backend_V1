@@ -199,7 +199,7 @@ const loginUserAccount = async (req, res) => {
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: false,
+      secure: true,
       sameSite: "none", // 🔥 this makes it FIRST-PARTY
     //  domain: ".onrender.com", // 🔥 shared across all your render subdomains
       path: "/",
