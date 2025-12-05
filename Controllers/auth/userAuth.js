@@ -116,7 +116,7 @@ const registerNewUser = async (req, res) => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
-      sameSite: "lax", // 🔥 this makes it FIRST-PARTY
+      sameSite: "None", // 🔥 this makes it FIRST-PARTY
       domain: ".onrender.com", // 🔥 shared across all your render subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
@@ -213,7 +213,7 @@ const loginUserAccount = async (req, res) => {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
-      sameSite: "lax", // 🔥 this makes it FIRST-PARTY
+      sameSite: "none", // 🔥 this makes it FIRST-PARTY
       domain: ".onrender.com", // 🔥 shared across all your render subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
