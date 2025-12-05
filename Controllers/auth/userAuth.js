@@ -96,27 +96,14 @@ const registerNewUser = async (req, res) => {
 
     const { token, refreshToken } = generateTokens(userId, role);
 
-    // res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: true, // use true in production
-    //   sameSite: "lax",
 
-    //   path: "/",
-    //   maxAge: 7 * 24 * 60 * 60 * 1000,
-    // });
 
-    //     res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //   secure: true, // ❗ must be false on localhost
-    //   sameSite: "none", // or "none" if using different ports or domains
-    //   path: "/",
-    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    // });
+
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: true,
-      sameSite: "None", // 🔥 this makes it FIRST-PARTY
+      sameSite: "none", // 🔥 this makes it FIRST-PARTY
       domain: ".onrender.com", // 🔥 shared across all your render subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
@@ -212,20 +199,14 @@ const loginUserAccount = async (req, res) => {
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: false,
       sameSite: "none", // 🔥 this makes it FIRST-PARTY
-      domain: ".onrender.com", // 🔥 shared across all your render subdomains
+    //  domain: ".onrender.com", // 🔥 shared across all your render subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    //     res.cookie("refreshToken", refreshToken, {
-    //   httpOnly: true,
-    //  secure: true,
-    // sameSite: "none",
-    //   path: "/",
-    //   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    // });
+    
 
     return res.status(200).json({
       message: "Login successful",
