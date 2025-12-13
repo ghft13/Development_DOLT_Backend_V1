@@ -1,0 +1,12 @@
+This backend repository handles all the server-side logic and API endpoints for the Dolt
+ platform. It includes a variety of routes such as:
+
+Auth Routes: Endpoints for user authentication and profile management, including signup, login, logout, verify, update profile, and account switching.
+
+Product and Service Routes: Manage all the product and service-related data.
+
+Booking Routes: Handle bookings and appointments between users and providers.
+
+Earning Routes: Track and manage earnings for service providers.
+
+Admin Dashboard Routes: Routes dedicated to admin functionalities and oversight.

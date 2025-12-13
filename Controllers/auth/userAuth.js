@@ -124,6 +124,7 @@ const registerNewUser = async (req, res) => {
 // ✅ controllers/authController.js
 const loginUserAccount = async (req, res) => {
   const { email, password, role } = req.body;
+  console.log(role)
 
   try {
     // Validate required fields
@@ -195,8 +196,8 @@ const loginUserAccount = async (req, res) => {
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none", // 🔥 this makes it FIRST-PARTY
+      secure: false,
+      sameSite: "lax", // 🔥 this makes it FIRST-PARTY
       //   domain: ".onrender.com", // 🔥 shared across all your render subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
