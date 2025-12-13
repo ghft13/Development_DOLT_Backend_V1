@@ -8,7 +8,7 @@ const PaymentService = require('../Services/PaymentService');
  */
 
 // --- Helper Functions ---
-const sendSuccess = (res, message, data = null, statusCode = 200) => {
+const success = (res, message, data = null, statusCode = 200) => {
     return res.status(statusCode).json({
         success: true,
         message,
@@ -16,11 +16,12 @@ const sendSuccess = (res, message, data = null, statusCode = 200) => {
     });
 };
 
-const sendError = (res, message, statusCode = 500, error = null) => {
+const error = (res, message, statusCode = 500, error = null) => {
     const response = {
         success: false,
         message
     };
+
     if (error && process.env.NODE_ENV !== 'production') {
         response.details = error.message || error;
     }
@@ -36,15 +37,14 @@ const authorize = async (req, res) => {
         const { providerId } = req.query;
 
         if (!providerId) {
-            return sendError(res, 'providerId is required', 400);
+            return error(res, 'providerId is required', 400);
         }
 
         const authUrl = PaymentService.getAuthorizationURL(providerId);
-        return sendSuccess(res, 'Authorization URL generated', { authUrl });
+        return success(res, 'Authorization URL generated', { authUrl });
 
     } catch (error) {
-        console.error('[PaymentController] Authorize Error:', error.message);
-        return sendError(res, error.message);
+        return error(res, error.message);
     }
 };
 
@@ -54,7 +54,7 @@ const connect = async (req, res) => {
         const { code, state } = req.query; // state = providerId
 
         if (!code || !state) {
-            return sendError(res, 'Missing authorization code or state', 400);
+            return error(res, 'Missing authorization code or state', 400);
         }
 
         const credentials = await PaymentService.createProviderConnection(code);
@@ -68,11 +68,10 @@ const connect = async (req, res) => {
             mp_connected: true
         }, { merge: true });
 
-        return sendSuccess(res, 'Provider connected successfully', { user_id: credentials.user_id });
+        return success(res, 'Provider connected successfully', { user_id: credentials.user_id });
 
     } catch (error) {
-        console.error('[PaymentController] Connect Error:', error.message);
-        return sendError(res, error.message);
+        return error(res, error.message);
     }
 };
 
@@ -83,17 +82,17 @@ const createPayment = async (req, res) => {
         const { platformFeePercent = 10, providerId } = body;
 
         if (!providerId) {
-            return sendError(res, "providerId is required in the request body", 400);
+            return error(res, "providerId is required in the request body", 400);
         }
 
         const providerDoc = await db.collection('providers').doc(providerId).get();
         if (!providerDoc.exists) {
-            return sendError(res, 'Provider not found', 404);
+            return error(res, 'Provider not found', 404);
         }
 
         const providerData = providerDoc.data();
         if (!providerData?.mp_access_token) {
-            return sendError(res, 'Provider is not connected to Mercado Pago', 400);
+            return error(res, 'Provider is not connected to Mercado Pago', 400);
         }
 
         const totalAmount = parseFloat(body.total_amount);
@@ -119,7 +118,7 @@ const createPayment = async (req, res) => {
         const validStatuses = ['authorized', 'in_process', 'pending', 'approved'];
 
         if (!validStatuses.includes(paymentResponse.status)) {
-            return sendError(res, 'Payment Unauthorized', 400, {
+            return error(res, 'Payment Unauthorized', 400, {
                 status: paymentResponse.status,
                 mp_response: paymentResponse
             });
@@ -139,7 +138,7 @@ const createPayment = async (req, res) => {
             expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()
         });
 
-        return sendSuccess(res, 'Payment Authorized', {
+        return success(res, 'Payment Authorized', {
             paymentId: paymentResponse.id,
             escrowCode: escrowCode,
             transactionId: transactionRef.id,
@@ -148,10 +147,17 @@ const createPayment = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('[PaymentController] Create Payment Error:', error.message);
-        return sendError(res, error.message, 500, error);
+        return error(res, error.message, 500, error);
     }
 };
+
+const cancelPayment = async (req, res) => {
+    // TODO: Implement cancel payment logic
+}
+
+const refundPayment = async (req, res) => {
+    // TODO: Implement refund payment logic
+}
 
 // 4. Capture Payment (Release Funds)
 const capturePayment = async (req, res) => {
@@ -159,38 +165,38 @@ const capturePayment = async (req, res) => {
         const { paymentId, escrowCode } = req.body;
 
         if (!paymentId || !escrowCode) {
-            return sendError(res, 'Missing paymentId or escrowCode', 400);
+            return error(res, 'Missing paymentId or escrowCode', 400);
         }
 
         let txQuery = await db.collection('transactions').where('paymentId', '==', parseInt(paymentId)).get();
         if (txQuery.empty) txQuery = await db.collection('transactions').where('paymentId', '==', String(paymentId)).get();
 
         if (txQuery.empty) {
-            return sendError(res, 'Transaction not found', 404);
+            return error(res, 'Transaction not found', 404);
         }
 
         const txDoc = txQuery.docs[0];
         const txData = txDoc.data();
 
         if (txData.status === 'captured') {
-            return sendSuccess(res, 'Payment already captured');
+            return success(res, 'Payment already captured');
         }
 
         if (txData.escrowCode !== escrowCode) {
-            return sendError(res, 'Invalid Verification Code', 403);
+            return error(res, 'Invalid Verification Code', 403);
         }
 
         if (['in_process', 'pending', 'pending_review_manual'].includes(txData.status)) {
-            return sendError(res, 'Payment is under review by Mercado Pago. Try again later.', 400, { status: 'pending_review' });
+            return error(res, 'Payment is under review by Mercado Pago. Try again later.', 400, { status: 'pending_review' });
         }
 
         if (txData.status !== 'authorized') {
-            return sendError(res, `Cannot capture payment with status: ${txData.status}`, 400);
+            return error(res, `Cannot capture payment with status: ${txData.status}`, 400);
         }
 
         const providerDoc = await db.collection('providers').doc(txData.providerId).get();
         if (!providerDoc.exists) {
-            return sendError(res, 'Provider data missing', 404);
+            return error(res, 'Provider data missing', 404);
         }
 
         const providerData = providerDoc.data();
@@ -201,15 +207,14 @@ const capturePayment = async (req, res) => {
                 status: 'captured',
                 capturedAt: new Date().toISOString()
             });
-            return sendSuccess(res, 'Funds released successfully', captureResponse);
+
+            return success(res, 'Funds released successfully', captureResponse);
         }
 
-        return sendError(res, 'Capture failed at Mercado Pago', 400, { status: captureResponse.status });
-
+        return error(res, 'Capture failed at Mercado Pago', 400, { status: captureResponse.status });
     } catch (error) {
-        console.error('[PaymentController] Capture Payment Error:', error.message);
-        return sendError(res, error.message);
+        return error(res, error.message);
     }
 };
 
-module.exports = { createPayment, capturePayment, authorize, connect };
+module.exports = { authorize, connect, createPayment, cancelPayment, refundPayment, capturePayment };

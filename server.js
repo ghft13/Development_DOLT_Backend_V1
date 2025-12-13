@@ -11,7 +11,7 @@ const serviceRoutes = require("./Routes/ServiceRoutes.js");
 const MessageRoute = require("./Routes/MessageRoute.js");
 const ProductsRoute = require("./Routes/ProductsRoute.js");
 const EarningRoute = require("./Routes/EarningRoute.js");
-const PaymentsRoutes = require("./Routes/PaymentRoutes.js");
+const PaymentRoutes = require("./Routes/PaymentRoutes.js");
 const { createDefaultAdmin } = require("./Controllers/auth/adminAuth.js");
 
 dotenv.config();
@@ -79,7 +79,7 @@ app.use("/api/bookings", BookingRoute);
 app.use("/api/user-counts", AdminDashboard);
 app.use("/api/admin", AdminDashboard);
 app.use("/api/messages", MessageRoute);
-app.use("/api/payments", PaymentsRoutes);
+app.use("/api/payments", PaymentRoutes);
 
 // ✅ 8. ERROR HANDLING for unmatched routes
 app.use((req, res) => {
