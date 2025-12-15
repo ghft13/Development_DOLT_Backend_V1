@@ -1,4 +1,4 @@
-const { MercadoPagoConfig, Payment, OAuth } = require('mercadopago');
+const { MercadoPagoConfig, Payment, OAuth, PaymentRefund } = require('mercadopago');
 const { randomUUID } = require("crypto");
 
 /**
@@ -78,12 +78,14 @@ class PaymentService {
         installments,
         paymentMethodId,
         payerEmail,
-        payerDoc,
+        payerDoc, // identification
+        payer, // full payer object (first_name, last_name, etc.)
         providerAccessToken,
         applicationFee,
         description,
         externalReference,
-        notificationUrl
+        notificationUrl,
+        additionalInfo // items, ip_address, etc.
     }) {
         if (!providerAccessToken) {
             throw new Error("Provider Access Token is required for Gateway Payments");
@@ -100,10 +102,11 @@ class PaymentService {
             payment_method_id: paymentMethodId,
             payer: {
                 email: payerEmail,
+                ...payer // Spread additional payer info (first_name, last_name, address)
             },
             capture: false, // Intentional: Gateway Flow requires explicit capture
             external_reference: externalReference,
-            notification_url: notificationUrl
+            additional_info: additionalInfo // Pass additional_info (items, etc.)
         };
 
         if (applicationFee) {
@@ -145,6 +148,52 @@ class PaymentService {
         } catch (error) {
             console.error("[PaymentService] Capture Error:", error.message);
             throw error;
+        }
+    }
+
+    /**
+     * Cancel Payment
+     * @param {string} paymentId - ID of the payment to cancel
+     * @param {string} providerAccessToken - Token of the provider
+     * @returns {Promise<Object>} The canceled payment response
+     */
+    async cancelPayment(paymentId, providerAccessToken) {
+        if (!paymentId) throw new Error("paymentId is required for Cancel a Processing Payment");
+        if (!providerAccessToken) throw new Error("Provider Access Token is required for canceling this payment");
+
+        const client = this.getProviderClient(providerAccessToken);
+        const payment = new Payment(client);
+
+        try {
+            return await payment.cancel({
+                id: paymentId,
+                requestOptions: { idempotencyKey: randomUUID() }
+            });
+        } catch (error) {
+            console.log(error.message);
+        }
+    }
+
+    /**
+     * Refund Payment
+     * @param {string} paymentId - ID of the payment to refund
+     * @param {string} providerAccessToken - Token of the provider
+     * @returns {Promise<Object>} The refunded payment response
+     */
+    async refundPayment(paymentId, providerAccessToken) {
+        if (!paymentId) throw new Error("paymentId is required for Refund a Processing Payment");
+        if (!providerAccessToken) throw new Error("Provider Access Token is required for refunding this payment");
+
+        const client = this.getProviderClient(providerAccessToken);
+        const refund = new PaymentRefund(client);
+
+        try {
+            return await refund.create({
+                payment_id: paymentId,
+                requestOptions: { idempotencyKey: randomUUID() }
+            });
+        } catch (error) {
+            console.log(error.message);
         }
     }
 }

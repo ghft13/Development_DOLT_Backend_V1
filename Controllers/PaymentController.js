@@ -43,8 +43,8 @@ const authorize = async (req, res) => {
         const authUrl = PaymentService.getAuthorizationURL(providerId);
         return success(res, 'Authorization URL generated', { authUrl });
 
-    } catch (error) {
-        return error(res, error.message);
+    } catch (err) {
+        return error(res, err.message);
     }
 };
 
@@ -69,9 +69,8 @@ const connect = async (req, res) => {
         }, { merge: true });
 
         return success(res, 'Provider connected successfully', { user_id: credentials.user_id });
-
-    } catch (error) {
-        return error(res, error.message);
+    } catch (err) {
+        return error(res, err.message);
     }
 };
 
@@ -109,10 +108,12 @@ const createPayment = async (req, res) => {
             paymentMethodId: methodData.id || body.payment_method_id,
             payerEmail: payerData.email,
             payerDoc: payerData.identification,
+            payer: payerData, // Pass full payer object
             providerAccessToken: providerData.mp_access_token,
             applicationFee,
             description: body.description || `Service with provider ${providerId}`,
-            externalReference: body.external_reference
+            externalReference: body.external_reference,
+            additionalInfo: body.additional_info // Pass additional_info containing items
         });
 
         const validStatuses = ['authorized', 'in_process', 'pending', 'approved'];
@@ -146,17 +147,103 @@ const createPayment = async (req, res) => {
             status_detail: paymentResponse.status_detail
         });
 
-    } catch (error) {
-        return error(res, error.message, 500, error);
+    } catch (err) {
+        return error(res, err.message, 500, err);
     }
 };
 
 const cancelPayment = async (req, res) => {
-    // TODO: Implement cancel payment logic
-}
+    try {
+        const { paymentId } = req.body;
+
+        if (!paymentId) {
+            return error(res, 'Missing paymentId', 400);
+        }
+
+        let txQuery = await db.collection('transactions').where('paymentId', '==', parseInt(paymentId)).get();
+        if (txQuery.empty) txQuery = await db.collection('transactions').where('paymentId', '==', String(paymentId)).get();
+
+        if (txQuery.empty) {
+            return error(res, 'Transaction not found', 404);
+        }
+
+        const txDoc = txQuery.docs[0];
+        const txData = txDoc.data();
+
+        if (txData.status !== 'pending' && txData.status !== 'in_process') {
+            return error(res, 'Payment is not pending or in process' + txData.status, 400);
+        }
+
+        const providerDoc = await db.collection('providers').doc(txData.providerId).get();
+
+        if (!providerDoc.exists) {
+            return error(res, 'Provider data missing', 404);
+        }
+
+        const providerData = providerDoc.data();
+
+        console.log(txData.paymentId);
+        const cancelResponse = await PaymentService.cancelPayment(txData.paymentId);
+
+        if (['cancelled'].includes(cancelResponse.status)) {
+            await txDoc.ref.update({
+                status: cancelResponse.status,
+                status_detail: cancelResponse.status_detail
+            });
+
+            return success(res, 'Payment canceled successfully', cancelResponse);
+        }
+
+        return error(res, 'Payment cancel failed', 400, cancelResponse);
+    } catch (err) {
+        return error(res, err.message);
+    }
+};
 
 const refundPayment = async (req, res) => {
-    // TODO: Implement refund payment logic
+    try {
+        const { paymentId } = req.body;
+
+        if (!paymentId) {
+            return error(res, 'Missing paymentId', 400);
+        }
+
+        let txQuery = await db.collection('transactions').where('paymentId', '==', parseInt(paymentId)).get();
+        if (txQuery.empty) txQuery = await db.collection('transactions').where('paymentId', '==', String(paymentId)).get();
+
+        if (txQuery.empty) {
+            return error(res, 'Transaction not found', 404);
+        }
+
+        const txDoc = txQuery.docs[0];
+        const txData = txDoc.data();
+
+        if (txData.status !== 'captured') {
+            return error(res, 'Payment is not captured', 400);
+        }
+
+        const providerDoc = await db.collection('providers').doc(txData.providerId).get();
+
+        if (!providerDoc.exists) {
+            return error(res, 'Provider data missing', 404);
+        }
+
+        const providerData = providerDoc.data();
+        const refundResponse = await PaymentService.refundPayment(txData.paymentId, providerData.mp_access_token);
+
+        if (['approved'].includes(refundResponse.status)) {
+            await txDoc.ref.update({
+                status: refundResponse.status,
+                status_detail: refundResponse.status_detail
+            });
+
+            return success(res, 'Payment refunded successfully', refundResponse);
+        }
+
+        return error(res, 'Payment refund failed', 400, refundResponse);
+    } catch (err) {
+        return error(res, err.message);
+    }
 }
 
 // 4. Capture Payment (Release Funds)
@@ -212,8 +299,8 @@ const capturePayment = async (req, res) => {
         }
 
         return error(res, 'Capture failed at Mercado Pago', 400, { status: captureResponse.status });
-    } catch (error) {
-        return error(res, error.message);
+    } catch (err) {
+        return error(res, err.message);
     }
 };
 

@@ -22,7 +22,7 @@ const createBooking = async (req, res) => {
       user_name,
       user_email,
     } = req.body;
-    
+
 
     // ✅ Validate required fields
     if (!user_id || !service_id || !scheduled_date || !address) {
@@ -68,7 +68,7 @@ const createBooking = async (req, res) => {
     }
 
     // ✅ Add booking reference to the user document
-   
+
 
     res.status(201).json({
       message: "✅ Booking created successfully",
@@ -447,6 +447,27 @@ const addEarning = async (req, res) => {
   }
 };
 
+const getBookingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: "Booking ID required" });
+
+    const doc = await db.collection("bookings").doc(id).get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { id: doc.id, ...doc.data() },
+    });
+  } catch (error) {
+    console.error("Error fetching booking:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   createBooking,
   getBookingdata,
@@ -456,4 +477,5 @@ module.exports = {
   DeleteBooking,
   rateBooking, // export new controller
   addEarning, // export new controller
+  getBookingById,
 };
