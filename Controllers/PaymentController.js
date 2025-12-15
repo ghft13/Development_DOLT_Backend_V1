@@ -133,7 +133,7 @@ const createPayment = async (req, res) => {
             payer: payerData, // Pass full payer object
             providerAccessToken: providerData.mp_access_token,
             applicationFee,
-            description: body.description || `Service with provider ${providerId}`,
+            description: body.description,
             externalReference: body.external_reference,
             additionalInfo: body.additional_info // Pass additional_info containing items
         });
