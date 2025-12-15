@@ -29,6 +29,28 @@ const error = (res, message, statusCode = 500, error = null) => {
     return res.status(statusCode).json(response);
 };
 
+const getTransactionWithProvider = async (paymentId) => {
+    let txQuery = await db.collection('transactions').where('paymentId', '==', parseInt(paymentId)).get();
+    if (txQuery.empty) txQuery = await db.collection('transactions').where('paymentId', '==', String(paymentId)).get();
+
+    if (txQuery.empty) {
+        return { error: 'Transaction not found', statusCode: 404 };
+    }
+
+    const txDoc = txQuery.docs[0];
+    const txData = txDoc.data();
+
+    const providerDoc = await db.collection('providers').doc(txData.providerId).get();
+
+    if (!providerDoc.exists) {
+        return { error: 'Provider data missing', statusCode: 404 };
+    }
+
+    const providerData = providerDoc.data();
+
+    return { txDoc, txData, providerData };
+};
+
 // --- Controller Methods ---
 
 // 1. Authorize: Generate OAuth URL
@@ -136,7 +158,7 @@ const createPayment = async (req, res) => {
             payerEmail: payerData.email,
             externalReference: body.external_reference,
             createdAt: new Date().toISOString(),
-            expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString()
+            expiresAt: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString() // check mp transaction expiresat
         });
 
         return success(res, 'Payment Authorized', {
@@ -160,30 +182,15 @@ const cancelPayment = async (req, res) => {
             return error(res, 'Missing paymentId', 400);
         }
 
-        let txQuery = await db.collection('transactions').where('paymentId', '==', parseInt(paymentId)).get();
-        if (txQuery.empty) txQuery = await db.collection('transactions').where('paymentId', '==', String(paymentId)).get();
-
-        if (txQuery.empty) {
-            return error(res, 'Transaction not found', 404);
-        }
-
-        const txDoc = txQuery.docs[0];
-        const txData = txDoc.data();
+        const { txDoc, txData, providerData, error: lookupError, statusCode } = await getTransactionWithProvider(paymentId);
+        if (lookupError) return error(res, lookupError, statusCode);
 
         if (txData.status !== 'pending' && txData.status !== 'in_process') {
-            return error(res, 'Payment is not pending or in process' + txData.status, 400);
+            return error(res, 'Payment is not pending or in process. Status: ' + txData.status, 400);
         }
-
-        const providerDoc = await db.collection('providers').doc(txData.providerId).get();
-
-        if (!providerDoc.exists) {
-            return error(res, 'Provider data missing', 404);
-        }
-
-        const providerData = providerDoc.data();
 
         console.log(txData.paymentId);
-        const cancelResponse = await PaymentService.cancelPayment(txData.paymentId);
+        const cancelResponse = await PaymentService.cancelPayment(txData.paymentId, providerData.mp_access_token);
 
         if (['cancelled'].includes(cancelResponse.status)) {
             await txDoc.ref.update({
@@ -208,27 +215,13 @@ const refundPayment = async (req, res) => {
             return error(res, 'Missing paymentId', 400);
         }
 
-        let txQuery = await db.collection('transactions').where('paymentId', '==', parseInt(paymentId)).get();
-        if (txQuery.empty) txQuery = await db.collection('transactions').where('paymentId', '==', String(paymentId)).get();
-
-        if (txQuery.empty) {
-            return error(res, 'Transaction not found', 404);
-        }
-
-        const txDoc = txQuery.docs[0];
-        const txData = txDoc.data();
+        const { txDoc, txData, providerData, error: lookupError, statusCode } = await getTransactionWithProvider(paymentId);
+        if (lookupError) return error(res, lookupError, statusCode);
 
         if (txData.status !== 'captured') {
             return error(res, 'Payment is not captured', 400);
         }
 
-        const providerDoc = await db.collection('providers').doc(txData.providerId).get();
-
-        if (!providerDoc.exists) {
-            return error(res, 'Provider data missing', 404);
-        }
-
-        const providerData = providerDoc.data();
         const refundResponse = await PaymentService.refundPayment(txData.paymentId, providerData.mp_access_token);
 
         if (['approved'].includes(refundResponse.status)) {
@@ -255,15 +248,8 @@ const capturePayment = async (req, res) => {
             return error(res, 'Missing paymentId or escrowCode', 400);
         }
 
-        let txQuery = await db.collection('transactions').where('paymentId', '==', parseInt(paymentId)).get();
-        if (txQuery.empty) txQuery = await db.collection('transactions').where('paymentId', '==', String(paymentId)).get();
-
-        if (txQuery.empty) {
-            return error(res, 'Transaction not found', 404);
-        }
-
-        const txDoc = txQuery.docs[0];
-        const txData = txDoc.data();
+        const { txDoc, txData, providerData, error: lookupError, statusCode } = await getTransactionWithProvider(paymentId);
+        if (lookupError) return error(res, lookupError, statusCode);
 
         if (txData.status === 'captured') {
             return success(res, 'Payment already captured');
@@ -281,12 +267,6 @@ const capturePayment = async (req, res) => {
             return error(res, `Cannot capture payment with status: ${txData.status}`, 400);
         }
 
-        const providerDoc = await db.collection('providers').doc(txData.providerId).get();
-        if (!providerDoc.exists) {
-            return error(res, 'Provider data missing', 404);
-        }
-
-        const providerData = providerDoc.data();
         const captureResponse = await PaymentService.capturePayment(txData.paymentId, providerData.mp_access_token);
 
         if (['approved', 'processed'].includes(captureResponse.status)) {
