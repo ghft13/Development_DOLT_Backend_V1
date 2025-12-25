@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
-const { authorize, connect, createPayment, cancelPayment, refundPayment, capturePayment } = require('../Controllers/PaymentController.js');
+const { authorize, connect, createPayment, cancelPayment, refundPayment, capturePayment, createPreference, receiveWebhook } = require('../Controllers/PaymentController.js');
+
+// POST /api/payments/notifications - Webhook for Mercado Pago
+router.post('/notifications', receiveWebhook);
+
+// POST /api/payments/create-preference - Create a preference for Wallet Brick
+router.post('/create-preference', createPreference);
 
 // POST /api/payments/create-payment - Create a payment intent (gateway mode)
 router.post('/create-payment', createPayment);

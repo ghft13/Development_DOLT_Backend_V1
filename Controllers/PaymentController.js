@@ -81,14 +81,16 @@ const connect = async (req, res) => {
 
         const credentials = await PaymentService.createProviderConnection(code);
 
-        await db.collection('providers').doc(state).set({
-            mp_access_token: credentials.access_token,
-            mp_refresh_token: credentials.refresh_token,
-            mp_user_id: credentials.user_id,
-            mp_public_key: credentials.public_key,
-            mp_connected_at: new Date().toISOString(),
-            mp_connected: true
-        }, { merge: true });
+        await db.collection('serviceProviders').doc(state).update({
+            mp_account: {
+                mp_access_token: credentials.access_token,
+                mp_refresh_token: credentials.refresh_token,
+                mp_user_id: credentials.user_id,
+                mp_public_key: credentials.public_key,
+                mp_connected_at: new Date().toISOString(),
+                mp_connected: true
+            }
+        });
 
         return success(res, 'Provider connected successfully', { user_id: credentials.user_id });
     } catch (err) {
@@ -284,4 +286,81 @@ const capturePayment = async (req, res) => {
     }
 };
 
-module.exports = { authorize, connect, createPayment, cancelPayment, refundPayment, capturePayment };
+// 5. Create Preference (Wallet Brick)
+const createPreference = async (req, res) => {
+    try {
+        const body = req.body;
+        const { items, payer, userId } = body;
+
+        const preferenceData = {
+            items: items.map(item => ({
+                id: item.id,
+                title: item.title,
+                description: item.description,
+                quantity: Number(item.quantity),
+                unit_price: Number(item.unit_price)
+            })),
+            payer: {
+                email: payer.email,
+                name: payer.first_name,
+                surname: payer.last_name
+            },
+            /* back_urls: {
+                success: `${baseUrl}/user/bookings?action=payment_success`,
+                failure: `${baseUrl}/user/bookings?action=payment_failure`,
+                pending: `${baseUrl}/user/bookings?action=payment_pending`
+            },
+            auto_return: "approved", */
+            external_reference: body.external_reference
+        };
+
+        const preference = await PaymentService.createPreference(preferenceData);
+
+        await db.collection('payments').add({
+            userId: userId,
+            preference: preference,
+        });
+
+        return success(res, "Preference created", { preferenceId: preference.id });
+    } catch (err) {
+        return error(res, err.message);
+    }
+};
+
+// 6. Receive Webhook
+const receiveWebhook = async (req, res) => {
+    try {
+        const body = req.body;
+
+        const payment = await PaymentService.getPayment(body.data.id);
+
+        await db.collection('payments').doc(String(payment.id)).set({
+            payment: payment,
+        });
+
+        if (payment && payment.status === 'approved') {
+            const bookingId = payment.external_reference;
+            console.log(`[PaymentController] Payment approved for Booking ID: ${bookingId}`);
+
+            // 1. Update Booking Status
+            if (bookingId && bookingId !== "pending_booking") {
+                const bookingRef = db.collection('bookings').doc(bookingId);
+                await bookingRef.update({
+                    status: 'pending', // Set to confirmed/pending provider
+                    isPaid: true,
+                    paymentId: payment.id,
+                    paidAt: new Date().toISOString()
+                });
+                console.log(`[PaymentController] Booking ${bookingId} updated to 'pending'.`);
+            }
+        }
+
+        // Always return 200 to MP to prevent retries
+        return res.status(200).send("OK");
+    } catch (err) {
+        console.error("Webhook error:", err);
+        return res.status(200).send("OK"); // Respond OK even on error to stop MP retries
+    }
+}
+
+module.exports = { authorize, connect, createPayment, cancelPayment, refundPayment, capturePayment, createPreference, receiveWebhook };

@@ -1,4 +1,4 @@
-const { MercadoPagoConfig, Payment, OAuth, PaymentRefund } = require('mercadopago');
+const { MercadoPagoConfig, Payment, OAuth, PaymentRefund, Preference } = require('mercadopago');
 const { randomUUID } = require("crypto");
 
 /**
@@ -191,6 +191,35 @@ class PaymentService {
             return await refund.create({
                 payment_id: paymentId,
                 requestOptions: { idempotencyKey: randomUUID() }
+            });
+        } catch (error) {
+            console.log(error.message);
+        }
+    }
+
+    /**
+     * Create Preference for Wallet Brick
+     * @param {Object} preferenceData - Preference data
+     * @returns {Promise<Object>} The created preference object
+     */
+    async createPreference(preferenceData) {
+        const preference = new Preference(this.platformClient);
+        try {
+            return await preference.create({
+                body: preferenceData,
+                requestOptions: { idempotencyKey: randomUUID() }
+            });
+        } catch (error) {
+            console.error("[PaymentService] Create Preference Error:", error.message);
+            throw error;
+        }
+    }
+
+    async getPayment(paymentId) {
+        const payment = new Payment(this.platformClient);
+        try {
+            return await payment.get({
+                id: paymentId
             });
         } catch (error) {
             console.log(error.message);
