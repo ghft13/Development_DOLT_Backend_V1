@@ -24,8 +24,9 @@ const allowedOrigins = [
   "https://d0lt-getitdone-clone.onrender.com",
   "https://dolt-dashboard-clone.onrender.com",
   "http://main.d0lt.local:3000",
+  "https://d0lt-getitdone-clone-1g95.onrender.com",
+  "https://dolt-dashboard-clone-61be.onrender.com",
   "http://dashboard.d0lt.local:3001"
-
 ];
 
 // ✅ 2. MIDDLEWARE ORDER IS CRITICAL
