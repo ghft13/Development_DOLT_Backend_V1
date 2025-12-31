@@ -22,7 +22,7 @@ const createBooking = async (req, res) => {
       user_name,
       user_email,
     } = req.body;
-    
+
 
     // ✅ Validate required fields
     if (!user_id || !service_id || !scheduled_date || !address) {
@@ -68,7 +68,7 @@ const createBooking = async (req, res) => {
     }
 
     // ✅ Add booking reference to the user document
-   
+
 
     res.status(201).json({
       message: "✅ Booking created successfully",
@@ -152,6 +152,9 @@ const getProviderBookings = async (req, res) => {
         // ❌ Skip cancelled bookings
         if (booking.isCancelled === true) return false;
 
+        // ❌ Skip unpaid bookings (pending_payment)
+        if (booking.status === 'pending_payment') return false;
+
         // ❌ Skip if provider is the same as the user (self-booking case)
         if (booking.user_id === providerId) return false;
 
@@ -204,6 +207,24 @@ const UpdateBooking = async (req, res) => {
         return res.status(400).json({ message: "Provider ID is missing" });
       }
 
+      // Validate Provider's Mercado Pago Connection
+      const providerRef = db.collection("serviceProviders").doc(providerId);
+      const providerDoc = await providerRef.get();
+
+      if (!providerDoc.exists) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+
+      const providerData = providerDoc.data();
+      const isConnected = providerData.mp_account?.mp_connected;
+
+      if (!isConnected) {
+        return res.status(403).json({
+          message: "You must connect your Mercado Pago account to accept bookings.",
+          code: "MP_REQUIRED"
+        });
+      }
+
       // Check if another provider already accepted it
       if (bookingData.isBooked && bookingData.provider_id !== providerId) {
         return res.status(409).json({
@@ -216,7 +237,6 @@ const UpdateBooking = async (req, res) => {
       updatedData.provider_id = providerId;
       updatedData.acceptedAt = new Date().toISOString();
 
-      const providerRef = db.collection("serviceProviders").doc(providerId);
       const userRef = db.collection("users").doc(bookingData.user_id);
 
       await userRef.update({
@@ -236,9 +256,8 @@ const UpdateBooking = async (req, res) => {
         acceptedBookings: admin.firestore.FieldValue.arrayUnion(bookingId),
       });
 
-      // Check if the user is a new client
-      const providerDoc = await providerRef.get();
-      const servedClients = providerDoc.data()?.servedClients || [];
+      // providerDoc is already fetched above
+      const servedClients = providerData.servedClients || [];
       const userId = bookingData.user_id;
 
       if (userId && !servedClients.includes(userId)) {
@@ -447,6 +466,27 @@ const addEarning = async (req, res) => {
   }
 };
 
+const getBookingById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ success: false, message: "Booking ID required" });
+
+    const doc = await db.collection("bookings").doc(id).get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, message: "Booking not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: { id: doc.id, ...doc.data() },
+    });
+  } catch (error) {
+    console.error("Error fetching booking:", error);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
 module.exports = {
   createBooking,
   getBookingdata,
@@ -456,4 +496,5 @@ module.exports = {
   DeleteBooking,
   rateBooking, // export new controller
   addEarning, // export new controller
+  getBookingById,
 };
