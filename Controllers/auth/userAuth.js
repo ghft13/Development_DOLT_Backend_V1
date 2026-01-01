@@ -63,6 +63,7 @@ const registerNewUser = async (req, res) => {
       newUserData.averageRating = 0;
       newUserData.professions = [];
       newUserData.acceptedBookings = [];
+      newUserData.acceptedOrders = []; // ✅ Added acceptedOrders
 
       // ✅ FIXED: Must be inside newUserData
       newUserData.hourlyRate = 0;
@@ -86,6 +87,7 @@ const registerNewUser = async (req, res) => {
       newUserData.averageRating = 0;
       newUserData.professions = [];
       newUserData.acceptedBookings = [];
+      newUserData.acceptedOrders = []; // ✅ Added acceptedOrders
     }
 
     // ✅ Save to Firestore (users OR serviceProviders)
@@ -98,9 +100,9 @@ const registerNewUser = async (req, res) => {
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: true,
-      sameSite: "none", // 🔥 this makes it FIRST-PARTY
-      //  domain: ".onrender.com", // 🔥 shared across all your render subdomains
+      secure: false, // Set to true in production
+      sameSite: "lax",
+      domain: ".d0lt.local", // ✅ Allow sharing across subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -196,9 +198,9 @@ const loginUserAccount = async (req, res) => {
 
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
-      secure: false,
-      sameSite: "lax", // 🔥 this makes it FIRST-PARTY
-      //   domain: ".onrender.com", // 🔥 shared across all your render subdomains
+      secure: false, // Set to true in production
+      sameSite: "lax",
+      domain: ".d0lt.local", // ✅ Allow sharing across subdomains
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
@@ -217,6 +219,7 @@ const loginUserAccount = async (req, res) => {
 };
 const VerifyUser = async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
+  console.log(refreshToken)
   if (!refreshToken) {
     return res
       .status(401)
@@ -268,9 +271,10 @@ const VerifyUser = async (req, res) => {
         id: userData.id,
         email: doc.email,
         fullName: doc.fullName || doc.name || "Admin",
-        role: doc.role,
+        role: userData.role, // Use role from token, not db
         isAlsoUser: doc.isAlsoUser ?? false,
         isAlsoProvider: doc.isAlsoProvider ?? false,
+        phone: doc.phone || "", // ✅ Added phone number
       },
     });
   } catch (err) {
@@ -332,6 +336,8 @@ const BecomeProvider = async (req, res) => {
         averageRating: 0,
         professions: [],
         acceptedBookings: [],
+        acceptedOrders: [], // ✅ Added acceptedOrders
+        avatar: "", // ✅ Initialize avatar
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     } else {

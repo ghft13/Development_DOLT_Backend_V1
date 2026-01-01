@@ -3,14 +3,12 @@
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
-    "type": "commonjs",
+  "type": "commonjs",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "setup": "node setup-firebase.js",
     "dev": "nodemon server.js"
-
-
   },
   "author": "",
   "license": "ISC",
@@ -25,14 +23,14 @@
     "express": "^4.21.2",
     "firebase-admin": "^13.2.0",
     "jsonwebtoken": "^9.0.2",
+    "mercadopago": "^2.11.0",
     "mongoose": "^8.12.1",
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.10.1",
     "streamifier": "^0.1.1",
-    "stripe": "^18.0.0",
-    "mercadopago": "^2.11.0"
+    "stripe": "^18.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

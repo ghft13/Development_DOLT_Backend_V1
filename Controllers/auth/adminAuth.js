@@ -1,6 +1,6 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { db,admin }=require("../../Config/FireBase.js")
+const { db, admin } = require("../../Config/FireBase.js")
 
 const createDefaultAdmin = async () => {
   try {
@@ -38,7 +38,7 @@ const createDefaultAdmin = async () => {
           createdAt: new Date().toISOString(),
         });
 
-  
+
       } else {
 
       }

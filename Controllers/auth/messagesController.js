@@ -1,9 +1,9 @@
-const { db,admin }=require("../../Config/FireBase.js")
+const { db, admin } = require("../../Config/FireBase.js")
 
 const getProviderConversations = async (req, res) => {
   try {
     const { userId } = req.query;
-    
+
     if (!userId) {
       return res
         .status(400)

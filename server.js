@@ -12,6 +12,7 @@ const MessageRoute = require("./Routes/MessageRoute.js");
 const ProductsRoute = require("./Routes/ProductsRoute.js");
 const EarningRoute = require("./Routes/EarningRoute.js");
 const PaymentRoutes = require("./Routes/PaymentRoutes.js");
+const OrderRoutes = require("./Routes/OrderRoute.js");
 const { createDefaultAdmin } = require("./Controllers/auth/adminAuth.js");
 
 dotenv.config();
@@ -26,7 +27,10 @@ const allowedOrigins = [
   "http://main.d0lt.local:3000",
   "https://d0lt-getitdone-clone-1g95.onrender.com",
   "https://dolt-dashboard-clone-61be.onrender.com",
-  "http://dashboard.d0lt.local:3001"
+  "http://dashboard.d0lt.local:3001",
+  "http://api.d0lt.local:5000",
+  "http://localhost:3001",
+  "http://localhost:3000"
 ];
 
 // ✅ 2. MIDDLEWARE ORDER IS CRITICAL
@@ -81,6 +85,7 @@ app.use("/api/user-counts", AdminDashboard);
 app.use("/api/admin", AdminDashboard);
 app.use("/api/messages", MessageRoute);
 app.use("/api/payments", PaymentRoutes);
+app.use("/api/orders", OrderRoutes);
 
 // ✅ 8. ERROR HANDLING for unmatched routes
 app.use((req, res) => {
@@ -93,7 +98,7 @@ app.listen(PORT, "0.0.0.0", async () => {
   try {
     await createDefaultAdmin();
     console.log(`✅ Server running on port ${PORT}`);
-    console.log(`📍 Allowed Origins: ${allowedOrigins.join(", ")}`);
+
   } catch (error) {
     console.error("❌ Error starting server:", error);
   }

@@ -1,15 +1,16 @@
 const { db } = require("../../Config/FireBase.js");
 
 // 🟩 Add a new product
+// 🟩 Add a new product
 const addProduct = async (req, res) => {
   try {
-    const { name, category, price, stock, image, rating, description } = req.body;
-  
+    const { name, category, price, stock, image, rating, description, providerId, providerName } = req.body;
+
     // ✅ Validate all required fields
-    if (!name || !category || !price || !stock ) {
+    if (!name || !category || !price || !stock || !image || !description || !providerId) {
       return res.status(400).json({
         success: false,
-        message: "Missing required fields: name, category, price, stock, image",
+        message: "All fields are required: name, category, price, stock, image, description, providerId",
       });
     }
 
@@ -21,8 +22,10 @@ const addProduct = async (req, res) => {
       stock: Number(stock),
       image: image.trim(),
       rating: rating ? Number(rating) : 0, // default 0 if not provided
-      description: description ? description.trim() : "",
+      description: description.trim(),
       createdAt: new Date(),
+      providerId: providerId, // ✅ Link to provider
+      providerName: providerName || "Unknown Provider", // ✅ Link to provider name
     };
 
     // ✅ Save to Firestore
@@ -43,7 +46,14 @@ const addProduct = async (req, res) => {
 // 🟨 Get all products
 const getAllProducts = async (req, res) => {
   try {
-    const snapshot = await db.collection("products").get();
+    const { providerId } = req.query;
+    let query = db.collection("products");
+
+    if (providerId) {
+      query = query.where("providerId", "==", providerId);
+    }
+
+    const snapshot = await query.get();
     const products = snapshot.docs.map((doc) => ({
       _id: doc.id,
       ...doc.data(),
