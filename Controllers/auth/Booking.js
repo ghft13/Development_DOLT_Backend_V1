@@ -487,6 +487,49 @@ const getBookingById = async (req, res) => {
   }
 };
 
+// Report an issue with a booking
+const reportIssue = async (req, res) => {
+  try {
+    const { bookingId, reason, description } = req.body;
+
+    if (!bookingId || !reason || !description) {
+      return res.status(400).json({ message: "Missing required fields." });
+    }
+
+    const bookingRef = db.collection("bookings").doc(bookingId);
+    const bookingDoc = await bookingRef.get();
+
+    if (!bookingDoc.exists) {
+      return res.status(404).json({ message: "Booking not found." });
+    }
+
+    const bookingData = bookingDoc.data();
+
+    if (bookingData.status !== "completed") {
+      return res.status(400).json({ message: "Can only report issues on completed bookings." });
+    }
+
+    if (bookingData.hasIssue) {
+      return res.status(400).json({ message: "An issue has already been reported for this booking." });
+    }
+
+    await bookingRef.update({
+      status: "disputed",
+      hasIssue: true,
+      issueDetails: {
+        reason,
+        description,
+        reportedAt: new Date().toISOString(),
+      },
+    });
+
+    res.json({ message: "Issue reported successfully. Our team will review it." });
+  } catch (error) {
+    console.error("Error reporting issue:", error);
+    res.status(500).json({ message: "Server error reporting issue." });
+  }
+};
+
 module.exports = {
   createBooking,
   getBookingdata,
@@ -497,4 +540,5 @@ module.exports = {
   rateBooking, // export new controller
   addEarning, // export new controller
   getBookingById,
+  reportIssue,
 };
