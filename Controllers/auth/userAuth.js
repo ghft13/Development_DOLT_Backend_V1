@@ -12,7 +12,7 @@ const getCookieOptions = (req) => {
       httpOnly: true,
       secure: true,
       sameSite: "None",
-      domain: process.env.COOKIE_DOMAIN || ".onrender.com",
+      domain: process.env.COOKIE_DOMAIN || undefined, // ✅ Default to Host-Only if no custom domain
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     };
