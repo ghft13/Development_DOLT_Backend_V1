@@ -3,6 +3,32 @@ const { generateTokens } = require("./tokenUtils");
 const { db, admin } = require("../../Config/FireBase.js");
 const { verifyRefreshToken } = require("./tokenUtils");
 
+// ✅ Helper for dynamic cookie configuration
+const getCookieOptions = (req) => {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (isProduction) {
+    return {
+      httpOnly: true,
+      secure: true,
+      sameSite: "None",
+      domain: process.env.COOKIE_DOMAIN || ".onrender.com",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    };
+  }
+
+  // Development (d0lt.local)
+  return {
+    httpOnly: true,
+    secure: false, // Ensure false for local dev usually, or match what was working
+    sameSite: "lax",
+    domain: ".d0lt.local",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  };
+};
+
 const registerNewUser = async (req, res) => {
   const { fullName, email, password, phone, role } = req.body;
 
@@ -98,14 +124,7 @@ const registerNewUser = async (req, res) => {
 
     const { token, refreshToken } = generateTokens(userId, role);
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false, // Set to true in production
-      sameSite: "lax",
-      domain: ".d0lt.local", // ✅ Allow sharing across subdomains
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie("refreshToken", refreshToken, getCookieOptions(req));
 
     return res.status(201).json({
       message: "User registered successfully",
@@ -196,19 +215,13 @@ const loginUserAccount = async (req, res) => {
       role,
     };
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false, // Set to true in production
-      sameSite: "lax",
-      domain: ".d0lt.local", // ✅ Allow sharing across subdomains
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie("refreshToken", refreshToken, getCookieOptions(req));
 
     return res.status(200).json({
       message: "Login successful",
       user: userSafe,
       token,
+
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -219,8 +232,9 @@ const loginUserAccount = async (req, res) => {
 };
 const VerifyUser = async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
-  console.log(refreshToken)
+
   if (!refreshToken) {
+
     return res
       .status(401)
       .json({ message: "Not authenticated — token unavailable" });
@@ -266,15 +280,17 @@ const VerifyUser = async (req, res) => {
         return res.status(404).json({ message: "User not found" });
       }
     }
+    const finalRole = doc.role || userData.role || (doc.isAlsoProvider ? "provider" : "user");
+
     return res.json({
       user: {
         id: userData.id,
         email: doc.email,
         fullName: doc.fullName || doc.name || "Admin",
-        role: userData.role, // Use role from token, not db
+        role: finalRole,
         isAlsoUser: doc.isAlsoUser ?? false,
         isAlsoProvider: doc.isAlsoProvider ?? false,
-        phone: doc.phone || "", // ✅ Added phone number
+        phone: doc.phone || "",
       },
     });
   } catch (err) {
@@ -283,10 +299,8 @@ const VerifyUser = async (req, res) => {
 };
 const logout = async (req, res) => {
   res.clearCookie("refreshToken", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "Strict",
-    path: "/", // Add this if you had it implicitly in set-cookie
+    ...getCookieOptions(req),
+    maxAge: 0,
   });
 
   res.json({ success: true, message: "Logged out successfully" });
@@ -604,10 +618,8 @@ const updateProviderProfile = async (req, res) => {
 
 const logoutUser = (req, res) => {
   res.clearCookie("refreshToken", {
-    httpOnly: true,
-    secure: false, // true in prod
-    sameSite: "lax", // "none" in prod
-    path: "/",
+    ...getCookieOptions(req),
+    maxAge: 0,
   });
 
   return res.status(200).json({ message: "Logout successful" });
