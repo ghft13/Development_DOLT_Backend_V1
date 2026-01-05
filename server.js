@@ -21,7 +21,6 @@ const app = express();
 
 // ✅ 1. ALLOWED ORIGINS - Add localhost for testing
 const allowedOrigins = [
-  "https://deploy-dolt.netlify.app",
   "https://d0lt-getitdone-clone.onrender.com",
   "https://dolt-dashboard-clone.onrender.com",
   "http://main.d0lt.local:3000",
@@ -30,7 +29,9 @@ const allowedOrigins = [
   "http://dashboard.d0lt.local:3001",
   "http://api.d0lt.local:5000",
   "http://localhost:3001",
-  "http://localhost:3000"
+  "http://localhost:3000",
+  "http://dashboard.d0lt.local:3000",
+  "http://localhost:5173"
 ];
 
 // ✅ 2. MIDDLEWARE ORDER IS CRITICAL
