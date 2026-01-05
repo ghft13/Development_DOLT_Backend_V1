@@ -215,6 +215,15 @@ const loginUserAccount = async (req, res) => {
       role,
     };
 
+    // ✅ FIX: Update the persistent role in the database to match the current login intent
+    // This ensures VerifyUser returns the correct role even if the user last switched to a different one.
+    try {
+      await userDoc.ref.update({ role: role });
+    } catch (updateErr) {
+      console.warn("Failed to update user role during login:", updateErr);
+      // non-blocking
+    }
+
     res.cookie("refreshToken", refreshToken, getCookieOptions(req));
 
     return res.status(200).json({

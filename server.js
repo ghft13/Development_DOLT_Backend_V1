@@ -30,7 +30,8 @@ const allowedOrigins = [
   "http://api.d0lt.local:5000",
   "http://localhost:3001",
   "http://localhost:3000",
-  "http://dashboard.d0lt.local:3000"
+  "http://dashboard.d0lt.local:3000",
+  "http://localhost:5173"
 ];
 
 // ✅ 2. MIDDLEWARE ORDER IS CRITICAL
