@@ -122,7 +122,7 @@ const getBookingdata = async (req, res) => {
 
 const getProviderBookings = async (req, res) => {
   try {
-    const { providerId } = req.query; // Get providerId from query params
+    const { providerId } = req.params; // Get providerId from params (matches route /provider/bookings/:providerId)
 
     if (!providerId) {
       return res.status(400).json({
