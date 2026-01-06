@@ -17,4 +17,7 @@ router.put("/accept", require("../Controllers/auth/OrderController.js").acceptOr
 // PUT /api/orders/status - Update order status (shipped/delivered)
 router.put("/status", require("../Controllers/auth/OrderController.js").updateOrderStatus);
 
+// GET /api/orders/group/:checkoutGroupId - Get order group details
+router.get("/group/:checkoutGroupId", require("../Controllers/auth/OrderController.js").getOrderGroup);
+
 module.exports = router;
