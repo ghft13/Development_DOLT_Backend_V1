@@ -339,19 +339,40 @@ const receiveWebhook = async (req, res) => {
         });
 
         if (payment && payment.status === 'approved') {
-            const bookingId = payment.external_reference;
-            // console.log(`[PaymentController] Payment approved for Booking ID: ${bookingId}`);
+            const externalRef = payment.external_reference;
+            // console.log(`[PaymentController] Payment approved for Ref: ${externalRef}`);
 
-            // 1. Update Booking Status
-            if (bookingId && bookingId !== "pending_booking") {
-                const bookingRef = db.collection('bookings').doc(bookingId);
+            // A. Check if it's an ORDER (Marketplace)
+            if (externalRef && externalRef.startsWith("ORDER-")) {
+                const ordersRef = db.collection('orderBookings');
+                const snapshot = await ordersRef.where('checkoutGroupId', '==', externalRef).get();
+
+                if (snapshot.empty) {
+                    console.warn(`[PaymentController] No orders found for Group ID: ${externalRef}`);
+                } else {
+                    const batch = db.batch();
+                    snapshot.docs.forEach(doc => {
+                        batch.update(doc.ref, {
+                            status: 'paid',
+                            isPaid: true,
+                            paymentId: payment.id,
+                            paidAt: new Date().toISOString()
+                        });
+                    });
+                    await batch.commit();
+                    console.log(`[PaymentController] Updated ${snapshot.size} orders for Group ID: ${externalRef}`);
+                }
+            }
+            // B. It's a BOOKING (Service)
+            else if (externalRef && externalRef !== "pending_booking") {
+                const bookingRef = db.collection('bookings').doc(externalRef);
                 await bookingRef.update({
                     status: 'pending', // Set to confirmed/pending provider
                     isPaid: true,
                     paymentId: payment.id,
                     paidAt: new Date().toISOString()
                 });
-                // console.log(`[PaymentController] Booking ${bookingId} updated to 'pending'.`);
+                // console.log(`[PaymentController] Booking ${externalRef} updated to 'pending'.`);
             }
         }
 

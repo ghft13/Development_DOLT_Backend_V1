@@ -28,6 +28,7 @@ const createOrder = async (req, res) => {
         }
 
         const createdOrderIds = [];
+        const checkoutGroupId = `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         // ✅ USE TRANSACTION FOR STOCK MANAGEMENT
         await db.runTransaction(async (t) => {
@@ -52,14 +53,6 @@ const createOrder = async (req, res) => {
             // 2. Reduce Stock
             for (const item of items) {
                 const productRef = db.collection("products").doc(item.id || item._id);
-                // We must read again in transaction or just update based on read above?
-                // In Firestore transaction, all reads must come before writes.
-                // We already read it above, so we can queue the writes now.
-                // BUT, to be safe and clean, we just queue the updates.
-
-                // Note: We need decrement. Using FieldValue.increment(-qty) is atomic but doesn't check bounds inside the write itself (though we checked above).
-                // However, transaction ensures no one else changed it in between.
-
                 t.update(productRef, {
                     stock: admin.firestore.FieldValue.increment(-Number(item.quantity))
                 });
@@ -88,8 +81,10 @@ const createOrder = async (req, res) => {
                     details,
                     items: data.items,
                     total_amount: data.subTotal,
-                    payment_id: payment_id || null,
+                    payment_id: payment_id || null, // Might be updated later via webhook
                     payment_method: payment_method || "card",
+                    checkoutGroupId, // Link orders together for payment
+                    // ✅ Forcing isBooked to false so provider must manually "Accept" it.
                     isBooked: false,
                     providerId: providerId === "unknown" ? null : providerId,
                     status: 'pending',
@@ -138,7 +133,8 @@ const createOrder = async (req, res) => {
         res.status(201).json({
             success: true,
             message: `Orders created successfully (${createdOrderIds.length} split orders)`,
-            orderIds: createdOrderIds
+            orderIds: createdOrderIds,
+            checkoutGroupId // Return for payment flow
         });
 
     } catch (error) {
@@ -392,10 +388,64 @@ const updateOrderStatus = async (req, res) => {
     }
 };
 
+// ✅ Get Order Group for Payment
+const getOrderGroup = async (req, res) => {
+    try {
+        const { checkoutGroupId } = req.params;
+
+        if (!checkoutGroupId) {
+            return res.status(400).json({ success: false, message: "Checkout Group ID is required" });
+        }
+
+        const ordersRef = db.collection("orderBookings");
+        const snapshot = await ordersRef.where("checkoutGroupId", "==", checkoutGroupId).get();
+
+        if (snapshot.empty) {
+            return res.status(404).json({ success: false, message: "Order group not found" });
+        }
+
+        let totalAmount = 0;
+        let items = [];
+        let userId = null;
+        let userEmail = null;
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            totalAmount += parseFloat(data.total_amount || 0);
+            items = items.concat(data.items || []);
+            if (!userId) userId = data.userid;
+        });
+
+        const orderGroupData = {
+            id: checkoutGroupId,
+            total_amount: totalAmount,
+            status: 'pending',
+            service_title: `Order Group ${checkoutGroupId}`,
+            service_description: `Payment for ${items.length} items from marketplace`,
+            user_id: userId,
+            items: items
+        };
+
+        res.status(200).json({
+            success: true,
+            data: orderGroupData
+        });
+
+    } catch (error) {
+        console.error("Error fetching order group:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch order group",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     createOrder,
     getUserOrders,
     getProviderOrders,
     acceptOrder,
-    updateOrderStatus
+    updateOrderStatus,
+    getOrderGroup
 }

@@ -20,7 +20,7 @@ const sendNotification = async (recipientId, title, message, type = "system") =>
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
-        console.log(`Notification sent to ${recipientId}: ${title}`);
+        // console.log(`Notification sent to ${recipientId}: ${title}`);
     } catch (error) {
         console.error("Error sending notification:", error);
     }

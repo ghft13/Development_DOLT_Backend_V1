@@ -38,8 +38,8 @@ app.use(cookieParser());
 
 // Global Request Logger
 app.use((req, res, next) => {
-  console.log(`📡 [${req.method}] ${req.url} | Origin: ${req.headers.origin} | Host: ${req.hostname}`);
-  console.log(`   Cookies:`, req.cookies);
+  // console.log(`📡 [${req.method}] ${req.url} | Origin: ${req.headers.origin} | Host: ${req.hostname}`);
+  // console.log(`   Cookies:`, req.cookies);
   next();
 });
 
