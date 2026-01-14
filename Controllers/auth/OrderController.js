@@ -1,4 +1,5 @@
 const { db, admin } = require("../../Config/FireBase.js");
+const { sendNotification } = require("../../Controllers/NotificationController");
 
 const createOrder = async (req, res) => {
     try {
@@ -26,53 +27,105 @@ const createOrder = async (req, res) => {
             }
         }
 
-        // 1. Group items by providerId
-        const ordersByProvider = {};
-
-        items.forEach(item => {
-            const pid = item.providerId || "unknown";
-            if (!ordersByProvider[pid]) {
-                ordersByProvider[pid] = {
-                    items: [],
-                    subTotal: 0
-                };
-            }
-            ordersByProvider[pid].items.push(item);
-            ordersByProvider[pid].subTotal += (item.price * item.quantity);
-        });
-
         const createdOrderIds = [];
 
-        // 2. Create an order for each provider
-        const batch = db.batch();
+        // ✅ USE TRANSACTION FOR STOCK MANAGEMENT
+        await db.runTransaction(async (t) => {
+            // 1. Verify Stock for ALL items first
+            for (const item of items) {
+                const productRef = db.collection("products").doc(item.id || item._id);
+                const productDoc = await t.get(productRef);
 
-        for (const [providerId, data] of Object.entries(ordersByProvider)) {
-            const newDocRef = db.collection("orderBookings").doc();
+                if (!productDoc.exists) {
+                    throw new Error(`Product not found: ${item.name}`);
+                }
 
-            const orderData = {
-                userid,
-                username,
-                details,
-                items: data.items,
-                total_amount: data.subTotal,
-                payment_id: payment_id || null,
-                payment_method: payment_method || "card",
-                // ✅ Forcing isBooked to false so provider must manually "Accept" it.
-                isBooked: false,
-                providerId: providerId === "unknown" ? null : providerId,
-                status: 'pending',
-                created_at: admin.firestore.FieldValue.serverTimestamp(),
-                updated_at: admin.firestore.FieldValue.serverTimestamp(),
-                id: newDocRef.id
-            };
+                const productData = productDoc.data();
+                const currentStock = Number(productData.stock || 0);
+                const requestedQty = Number(item.quantity);
 
-            batch.set(newDocRef, orderData);
-            createdOrderIds.push(newDocRef.id);
+                if (currentStock < requestedQty) {
+                    throw new Error(`Insufficient stock for ${item.name}. Available: ${currentStock}`);
+                }
+            }
+
+            // 2. Reduce Stock
+            for (const item of items) {
+                const productRef = db.collection("products").doc(item.id || item._id);
+                // We must read again in transaction or just update based on read above?
+                // In Firestore transaction, all reads must come before writes.
+                // We already read it above, so we can queue the writes now.
+                // BUT, to be safe and clean, we just queue the updates.
+
+                // Note: We need decrement. Using FieldValue.increment(-qty) is atomic but doesn't check bounds inside the write itself (though we checked above).
+                // However, transaction ensures no one else changed it in between.
+
+                t.update(productRef, {
+                    stock: admin.firestore.FieldValue.increment(-Number(item.quantity))
+                });
+            }
+
+
+            // 3. Group items by providerId and Create Orders
+            const ordersByProvider = {};
+            items.forEach(item => {
+                const pid = item.providerId || "unknown";
+                if (!ordersByProvider[pid]) {
+                    ordersByProvider[pid] = {
+                        items: [],
+                        subTotal: 0
+                    };
+                }
+                ordersByProvider[pid].items.push(item);
+                ordersByProvider[pid].subTotal += (item.price * item.quantity);
+            });
+
+            for (const [providerId, data] of Object.entries(ordersByProvider)) {
+                const newDocRef = db.collection("orderBookings").doc();
+                const orderData = {
+                    userid,
+                    username,
+                    details,
+                    items: data.items,
+                    total_amount: data.subTotal,
+                    payment_id: payment_id || null,
+                    payment_method: payment_method || "card",
+                    isBooked: false,
+                    providerId: providerId === "unknown" ? null : providerId,
+                    status: 'pending',
+                    created_at: admin.firestore.FieldValue.serverTimestamp(),
+                    updated_at: admin.firestore.FieldValue.serverTimestamp(),
+                    id: newDocRef.id
+                };
+
+                t.set(newDocRef, orderData);
+                createdOrderIds.push(newDocRef.id);
+            }
+        });
+
+        // 🔔 Send Notifications (Async - don't block response)
+        // Group items by provider again to send specific notifications
+        const notificationPromises = [];
+
+        // 1. Notify User (Order Confirmation)
+        notificationPromises.push(sendNotification(userid, "Order Placed", `Your order for ${items.length} items has been placed successfully.`, "order"));
+
+        // 2. Notify Providers
+        const ordersByProvider = {};
+        items.forEach(item => {
+            const pid = item.providerId;
+            if (pid && pid !== "unknown") {
+                if (!ordersByProvider[pid]) ordersByProvider[pid] = [];
+                ordersByProvider[pid].push(item);
+            }
+        });
+
+        for (const [providerId, pItems] of Object.entries(ordersByProvider)) {
+            const itemNames = pItems.map(i => i.name).join(", ");
+            notificationPromises.push(sendNotification(providerId, "New Order Received", `You have a new order for: ${itemNames}`, "order"));
         }
 
-        await batch.commit();
-
-        // Update User's order list (optional)
+        Promise.all(notificationPromises).catch(err => console.error("Notification Error:", err));
         try {
             const userRef = db.collection("users").doc(userid);
             await userRef.update({
@@ -90,6 +143,10 @@ const createOrder = async (req, res) => {
 
     } catch (error) {
         console.error("Error creating order:", error);
+        // Handle specific stock errors
+        if (error.message.includes("Insufficient stock") || error.message.includes("Product not found")) {
+            return res.status(400).json({ message: error.message });
+        }
         res.status(500).json({ message: "Server error", error: error.message });
     }
 };

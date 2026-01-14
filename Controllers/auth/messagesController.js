@@ -159,7 +159,66 @@ const getUserConversations = async (req, res) => {
 
 
 
+const { sendNotification } = require("../../Controllers/NotificationController");
+
+const sendMessage = async (req, res) => {
+  try {
+    const { senderId, receiverId, content, senderName } = req.body;
+
+    if (!senderId || !receiverId || !content) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    // 1. Determine Conversation ID (consistent ID independent of who sends first)
+    // sort IDs to ensure consistency: id1_id2
+    const participants = [senderId, receiverId].sort();
+    const conversationId = `${participants[0]}_${participants[1]}`;
+
+    const conversationRef = db.collection("conversations").doc(conversationId);
+
+    // 2. Save Message
+    const messageData = {
+      senderId,
+      receiverId,
+      content,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      read: false,
+    };
+
+    // 3. Update Conversation Metadata (Atomic batch or just separate writes)
+    // using db.runTransaction ensures consistency but separate writes are fine here for speed
+
+    const batch = db.batch();
+
+    // Add message to subcollection
+    const msgRef = conversationRef.collection("messages").doc();
+    batch.set(msgRef, messageData);
+
+    // Update conversation details
+    batch.set(conversationRef, {
+      participants,
+      lastMessage: content,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      [`unreadCount_${receiverId}`]: admin.firestore.FieldValue.increment(1),
+      // We can store participant details loosely if needed, or rely on clients to fetch
+    }, { merge: true });
+
+    await batch.commit();
+
+    // 4. Send Notification
+    await sendNotification(receiverId, `New message from ${senderName || "User"}`, content, "message");
+
+    res.status(200).json({ success: true, messageId: msgRef.id });
+
+  } catch (error) {
+    console.error("Error sending message:", error);
+    res.status(500).json({ success: false, message: "Failed to send message" });
+  }
+};
+
+
 module.exports = {
   getUserConversations,
   getProviderConversations,
+  sendMessage,
 };

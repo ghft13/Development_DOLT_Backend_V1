@@ -19,24 +19,29 @@ dotenv.config();
 
 const app = express();
 
-// ✅ 1. ALLOWED ORIGINS - Add localhost for testing
-const allowedOrigins = [
-  "https://d0lt-getitdone-clone.onrender.com",
-  "https://dolt-dashboard-clone.onrender.com",
-  "http://main.d0lt.local:3000",
-  "https://d0lt-getitdone-clone-1g95.onrender.com",
-  "https://dolt-dashboard-clone-61be.onrender.com",
-  "http://dashboard.d0lt.local:3001",
-  "http://api.d0lt.local:5000",
-  "http://localhost:3001",
-  "http://localhost:3000",
-  "http://dashboard.d0lt.local:3000",
-  "http://localhost:5173"
-];
+// ✅ 1. ALLOWED ORIGINS - Fetch from .env or default to localhost
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",")
+  : [
+    "http://localhost:3001",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3001",
+    "http://127.0.0.1:3000",
+    "https://dolt-dashboard-clone.onrender.com",
+    "https://d0lt-getitdone-clone.onrender.com"
+  ];
 
 // ✅ 2. MIDDLEWARE ORDER IS CRITICAL
 // Parse cookies FIRST (before any routes)
 app.use(cookieParser());
+
+// Global Request Logger
+app.use((req, res, next) => {
+  console.log(`📡 [${req.method}] ${req.url} | Origin: ${req.headers.origin} | Host: ${req.hostname}`);
+  console.log(`   Cookies:`, req.cookies);
+  next();
+});
 
 // Parse JSON SECOND
 app.use(express.json({ limit: "50mb" }));

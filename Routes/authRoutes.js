@@ -1,29 +1,31 @@
 const express = require("express");
 const router = express.Router();
 const {
-  registerNewUser,
-  loginUserAccount,
   logout,
+  VerifyUser,
   BecomeProvider,
   BecomeUser,
   switchRole,
-  VerifyUser,
   updateProviderProfile,
+  updateUserProfile,
   getLoggedInProviderData,
-  logoutUser
+  loginWithFirebase,
+  signupWithFirebase
 } = require("../Controllers/auth/userAuth");
 
 
 
-router.post("/signup", registerNewUser);
-router.post("/login", loginUserAccount);
+router.post("/signup-firebase", signupWithFirebase); // ✅ New
+router.post("/login-firebase", loginWithFirebase); // ✅ New
 router.post("/logout", logout);
-router.post("/become-provider",BecomeProvider)
-router.post("/become-user",BecomeUser)
-router.post("/switch-role",switchRole)
+router.get("/verify", VerifyUser);
 
-router.get("/verify",VerifyUser)
+router.post("/become-provider", BecomeProvider)
+router.post("/become-user", BecomeUser)
+router.post("/switch-role", switchRole)
+
 router.get("/me", getLoggedInProviderData);
-router.put("/update-profile",  updateProviderProfile);
-router.post("/logout", logoutUser);
+router.put("/update-profile", updateProviderProfile); // Provider update (PUT)
+router.post("/update-profile", updateUserProfile); // User update (POST)
+
 module.exports = router;

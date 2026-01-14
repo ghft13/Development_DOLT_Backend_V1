@@ -5,7 +5,7 @@ const serviceCollection = db.collection("services");
 
 const addService = async (req, res) => {
   try {
-   
+
     const { name, category, basePrice, description, icon, rating, reviewCount } = req.body;
 
     // ✅ Validate required fields

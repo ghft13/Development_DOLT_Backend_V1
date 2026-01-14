@@ -4,316 +4,26 @@ const { db, admin } = require("../../Config/FireBase.js");
 const { verifyRefreshToken } = require("./tokenUtils");
 
 // ✅ Helper for dynamic cookie configuration
+// ✅ Helper for dynamic cookie configuration
 const getCookieOptions = (req) => {
   const isProduction = process.env.NODE_ENV === "production";
+  const cookieDomain = process.env.COOKIE_DOMAIN; // e.g., ".d0lt.com"
 
-  if (isProduction) {
-    return {
-      httpOnly: true,
-      secure: true,
-      sameSite: "None",
-      domain: process.env.COOKIE_DOMAIN || undefined, // ✅ Default to Host-Only if no custom domain
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    };
-  }
-
-  // Development (d0lt.local)
   return {
     httpOnly: true,
-    secure: false, // Ensure false for local dev usually, or match what was working
-    sameSite: "lax",
-    domain: ".d0lt.local",
+    secure: isProduction || process.env.COOKIE_SECURE === "true", // Always secure in production
+    sameSite: isProduction ? "None" : "Lax", // "None" allows cross-site (needed for different domains), "Lax" for local
+    domain: cookieDomain || undefined, // Set if sharing across subdomains
     path: "/",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 };
 
-const registerNewUser = async (req, res) => {
-  const { fullName, email, password, phone, role } = req.body;
 
-  try {
-    if (!fullName || !email || !password || !phone || !role) {
-      return res.status(400).json({ message: "All fields are required" });
-    }
 
-    if (!["user", "provider"].includes(role)) {
-      return res.status(400).json({ message: "Invalid role" });
-    }
 
-    const userCollection = role === "user" ? "users" : "serviceProviders";
-    const otherCollection = role === "user" ? "serviceProviders" : "users";
 
-    const userRef = db.collection(userCollection);
-    const otherRef = db.collection(otherCollection);
 
-    const checks = await Promise.all([
-      userRef.where("email", "==", email).get(),
-      userRef.where("phone", "==", phone).get(),
-      otherRef.where("email", "==", email).get(),
-      otherRef.where("phone", "==", phone).get(),
-    ]);
-
-    if (checks.some((snap) => !snap.empty)) {
-      return res
-        .status(400)
-        .json({ message: "Email or phone number already exists" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // ✅ Pre-generate document ID
-    const newDocRef = db.collection(userCollection).doc();
-    const userId = newDocRef.id;
-
-    // ✅ Base data
-    let newUserData = {
-      id: userId,
-      fullName,
-      email,
-      phone,
-      password: hashedPassword,
-      role,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      isAlsoProvider: false,
-      isAlsoUser: false,
-    };
-
-    if (role === "provider") {
-      newUserData.isAlsoProvider = true;
-      newUserData.totalClients = 0;
-      newUserData.totalAppointments = 0;
-      newUserData.earnings = 0;
-      newUserData.ratings = [];
-      newUserData.ratingCount = 0;
-      newUserData.averageRating = 0;
-      newUserData.professions = [];
-      newUserData.acceptedBookings = [];
-      newUserData.acceptedOrders = []; // ✅ Added acceptedOrders
-
-      // ✅ FIXED: Must be inside newUserData
-      newUserData.hourlyRate = 0;
-      newUserData.skills = [];
-      newUserData.serviceAreas = [];
-      newUserData.avatar = "";
-    }
-
-    // ✅ Role-based fields
-    if (role === "user") {
-      newUserData.isAlsoUser = true;
-      newUserData.bookings = [];
-      newUserData.orderIds = [];
-    } else {
-      newUserData.isAlsoProvider = true;
-      newUserData.totalClients = 0;
-      newUserData.totalAppointments = 0;
-      newUserData.earnings = 0;
-      newUserData.ratings = [];
-      newUserData.ratingCount = 0;
-      newUserData.averageRating = 0;
-      newUserData.professions = [];
-      newUserData.acceptedBookings = [];
-      newUserData.acceptedOrders = []; // ✅ Added acceptedOrders
-    }
-
-    // ✅ Save to Firestore (users OR serviceProviders)
-    await newDocRef.set(newUserData);
-
-    // ✅ (Optional) mirror entry in other collection (if needed later)
-    // await db.collection(otherCollection).doc(userId).set({ id: userId, linkedRole: role });
-
-    const { token, refreshToken } = generateTokens(userId, role);
-
-    res.cookie("refreshToken", refreshToken, getCookieOptions(req));
-
-    return res.status(201).json({
-      message: "User registered successfully",
-      user: {
-        id: userId,
-        ...newUserData,
-        password: undefined,
-      },
-      token,
-      role,
-    });
-  } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
-  }
-};
-
-// ✅ controllers/authController.js
-const loginUserAccount = async (req, res) => {
-  const { email, password, role } = req.body;
-  console.log(role)
-
-  try {
-    // Validate required fields
-    if (!email || !password || !role) {
-      return res
-        .status(400)
-        .json({ message: "Email, password and role are required" });
-    }
-
-    let userDoc = null;
-    let userData = null;
-
-    // Find user based on role
-    if (role === "user") {
-      const snap = await db
-        .collection("users")
-        .where("email", "==", email)
-        .get();
-      if (!snap.empty) {
-        userDoc = snap.docs[0];
-        userData = userDoc.data();
-      }
-    } else if (role === "provider") {
-      const snap = await db
-        .collection("serviceProviders")
-        .where("email", "==", email)
-        .get();
-      if (!snap.empty) {
-        userDoc = snap.docs[0];
-        userData = userDoc.data();
-      }
-    } else if (role === "admin") {
-      const snap = await db
-        .collection("admins")
-        .where("email", "==", email)
-        .get();
-      if (!snap.empty) {
-        userDoc = snap.docs[0];
-        userData = userDoc.data();
-      }
-    } else {
-      return res.status(400).json({ message: "Invalid role provided" });
-    }
-
-    // No user found
-    if (!userDoc) {
-      return res
-        .status(404)
-        .json({ message: "User not found for given email and role" });
-    }
-
-    // 🔐 Check password
-    const isMatch = await bcrypt.compare(password, userData.password);
-    if (!isMatch) {
-      return res.status(401).json({ message: "Incorrect password" });
-    }
-
-    // Generate tokens
-    const { token, refreshToken } = generateTokens(userDoc.id, role);
-
-    // Safe user data (no password)
-    const userSafe = {
-      id: userDoc.id,
-      fullName: userData.fullName || "",
-      email: userData.email,
-      phone: userData.phone || "",
-      role,
-    };
-
-    // ✅ FIX: Update the persistent role in the database to match the current login intent
-    // This ensures VerifyUser returns the correct role even if the user last switched to a different one.
-    try {
-      await userDoc.ref.update({ role: role });
-    } catch (updateErr) {
-      console.warn("Failed to update user role during login:", updateErr);
-      // non-blocking
-    }
-
-    res.cookie("refreshToken", refreshToken, getCookieOptions(req));
-
-    return res.status(200).json({
-      message: "Login successful",
-      user: userSafe,
-      token,
-
-    });
-  } catch (error) {
-    console.error("Login error:", error);
-    return res
-      .status(500)
-      .json({ message: "Server error", error: error.message });
-  }
-};
-const VerifyUser = async (req, res) => {
-  const refreshToken = req.cookies.refreshToken;
-
-  if (!refreshToken) {
-
-    return res
-      .status(401)
-      .json({ message: "Not authenticated — token unavailable" });
-  }
-  try {
-    const userData = verifyRefreshToken(refreshToken);
-    if (!userData || !userData.id) {
-      return res.status(401).json({ message: "Invalid token" });
-    }
-    const userRef = db.collection("users").doc(userData.id);
-    const providerRef = db.collection("serviceProviders").doc(userData.id);
-    const adminRef = db.collection("admins").doc(userData.id);
-    const [userSnap, providerSnap, adminSnap] = await Promise.all([
-      userRef.get(),
-      providerRef.get(),
-      adminRef.get(),
-    ]);
-    let doc = null;
-    if (userData.role === "admin") {
-      if (adminSnap.exists) {
-        doc = adminSnap.data();
-      } else {
-      }
-    } else if (userData.role === "provider") {
-      if (providerSnap.exists) {
-        doc = providerSnap.data();
-      } else {
-      }
-    } else if (userData.role === "user") {
-      if (userSnap.exists) {
-        doc = userSnap.data();
-      } else {
-      }
-    }
-    if (!doc) {
-      if (userSnap.exists) {
-        doc = userSnap.data();
-      } else if (providerSnap.exists) {
-        doc = providerSnap.data();
-      } else if (adminSnap.exists) {
-        doc = adminSnap.data();
-      } else {
-        return res.status(404).json({ message: "User not found" });
-      }
-    }
-    const finalRole = doc.role || userData.role || (doc.isAlsoProvider ? "provider" : "user");
-
-    return res.json({
-      user: {
-        id: userData.id,
-        email: doc.email,
-        fullName: doc.fullName || doc.name || "Admin",
-        role: finalRole,
-        isAlsoUser: doc.isAlsoUser ?? false,
-        isAlsoProvider: doc.isAlsoProvider ?? false,
-        phone: doc.phone || "",
-      },
-    });
-  } catch (err) {
-    return res.status(401).json({ message: "Invalid token" });
-  }
-};
-const logout = async (req, res) => {
-  res.clearCookie("refreshToken", {
-    ...getCookieOptions(req),
-    maxAge: 0,
-  });
-
-  res.json({ success: true, message: "Logged out successfully" });
-};
 
 const BecomeProvider = async (req, res) => {
   try {
@@ -347,7 +57,7 @@ const BecomeProvider = async (req, res) => {
         fullName,
         email,
         phone,
-        password,
+        password: password || "N/A", // ✅ Handle undefined password from Firebase users
         role: "provider",
         isAlsoUser: true,
         isAlsoProvider: true,
@@ -373,8 +83,8 @@ const BecomeProvider = async (req, res) => {
       });
     }
 
-    // ✅ Mark user document as also provider
-    await userRef.update({ isAlsoProvider: true });
+    // ✅ Mark user document as also provider AND switch role immediately
+    await userRef.update({ isAlsoProvider: true, role: "provider" });
 
     return res.json({
       success: true,
@@ -385,6 +95,72 @@ const BecomeProvider = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: "Internal Server Error" });
+  }
+};
+
+const logout = async (req, res) => {
+  res.clearCookie("refreshToken", {
+    ...getCookieOptions(req),
+    maxAge: 0,
+  });
+
+  res.json({ success: true, message: "Logged out successfully" });
+};
+
+const VerifyUser = async (req, res) => {
+  // console.log("🔍 [Backend] VerifyUser Request:");
+  // console.log("   Origin:", req.headers.origin);
+  // console.log("   Cookie Header:", req.headers.cookie);
+  // console.log("   Parsed Cookies:", req.cookies);
+
+  const refreshToken = req.cookies.refreshToken;
+  // console.log("   RefreshToken Value:", refreshToken);
+
+  if (!refreshToken) {
+    return res.status(401).json({ message: "Not authenticated — token unavailable" });
+  }
+  try {
+    const userData = verifyRefreshToken(refreshToken);
+    if (!userData || !userData.id) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+    const userRef = db.collection("users").doc(userData.id);
+    const providerRef = db.collection("serviceProviders").doc(userData.id);
+    const adminRef = db.collection("admins").doc(userData.id);
+    const [userSnap, providerSnap, adminSnap] = await Promise.all([
+      userRef.get(),
+      providerRef.get(),
+      adminRef.get(),
+    ]);
+
+    let doc = null;
+    if (userData.role === "admin" && adminSnap.exists) doc = adminSnap.data();
+    else if (userData.role === "provider" && providerSnap.exists) doc = providerSnap.data();
+    else if (userData.role === "user" && userSnap.exists) doc = userSnap.data();
+
+    if (!doc) {
+      if (userSnap.exists) doc = userSnap.data();
+      else if (providerSnap.exists) doc = providerSnap.data();
+      else if (adminSnap.exists) doc = adminSnap.data();
+      else return res.status(404).json({ message: "User not found" });
+    }
+
+    const finalRole = doc.role || userData.role || (doc.isAlsoProvider ? "provider" : "user");
+
+    return res.json({
+      user: {
+        id: userData.id,
+        email: doc.email,
+        fullName: doc.fullName || doc.name || "Admin",
+        role: finalRole,
+        isAlsoUser: doc.isAlsoUser ?? false,
+        isAlsoProvider: doc.isAlsoProvider ?? false,
+        phone: doc.phone || "",
+        avatar: doc.avatar || "",
+      },
+    });
+  } catch (err) {
+    return res.status(401).json({ message: "Invalid token" });
   }
 };
 
@@ -419,7 +195,7 @@ const BecomeUser = async (req, res) => {
         id: userId,
         fullName,
         email,
-        password,
+        password: password || "N/A", // ✅ Handle undefined password
         phone,
         role: "user",
         isAlsoProvider: true,
@@ -615,6 +391,22 @@ const updateProviderProfile = async (req, res) => {
 
     await providerRef.update(updates);
 
+    // ✅ Sync common fields to 'users' collection if the user exists
+    const userRef = db.collection("users").doc(userId);
+    const userSnap = await userRef.get();
+
+    if (userSnap.exists) {
+      const userUpdates = {};
+      if (updates.fullName) userUpdates.fullName = updates.fullName;
+      if (updates.email) userUpdates.email = updates.email;
+      if (updates.avatar !== undefined) userUpdates.avatar = updates.avatar;
+
+      if (Object.keys(userUpdates).length > 0) {
+        await userRef.update(userUpdates);
+        // console.log(`✅ Synced profile updates to users collection for ${userId}`);
+      }
+    }
+
     return res.json({
       message: "Profile updated successfully",
       updated: updates,
@@ -625,24 +417,283 @@ const updateProviderProfile = async (req, res) => {
   }
 };
 
-const logoutUser = (req, res) => {
-  res.clearCookie("refreshToken", {
-    ...getCookieOptions(req),
-    maxAge: 0,
-  });
 
-  return res.status(200).json({ message: "Logout successful" });
+const updateUserProfile = async (req, res) => {
+  try {
+    const { userId, name, email, phone, address, city, state, zipCode, avatar } = req.body;
+
+    if (!userId) {
+      return res.status(401).json({ message: "Unauthorized user" });
+    }
+
+    // Determine collection based on where user is found, OR update 'users' collection generally.
+    // For now, let's assume 'users' collection. 
+    // IF the user is also a provider, we might want to update both?
+    // Let's stick to updating the 'users' document for now as this is the 'User Dashboard'.
+
+    const userRef = db.collection("users").doc(userId);
+    const userSnap = await userRef.get();
+
+    if (!userSnap.exists) {
+      // Fallback: check if they are a provider only? 
+      // But if they are in User Dashboard, they should have a user doc (created via Become User if needed).
+      // If not, we error out.
+      return res.status(404).json({ message: "User profile not found" });
+    }
+
+    const updates = {};
+    if (name) updates.fullName = name;
+    if (phone) updates.phone = phone;
+    if (address) updates.address = address;
+    if (city) updates.city = city;
+    if (state) updates.state = state;
+    if (zipCode) updates.zipCode = zipCode;
+    if (avatar) updates.avatar = avatar;
+
+    await userRef.update(updates);
+
+    // If user is also a provider, we might want to sync common fields (name, phone, avatar) to keep them consistent?
+    // Optional improvement for later.
+
+    return res.json({
+      message: "Profile updated successfully",
+      updated: updates,
+    });
+
+  } catch (error) {
+    console.error("User Profile Update Error:", error);
+    return res.status(500).json({ message: "Something went wrong" });
+  }
 };
 
+const loginWithFirebase = async (req, res) => {
+  const { idToken, role: requestedRole } = req.body;
+  // console.log("🔥 [Backend] Login initiated. Token length:", idToken?.length);
+  // console.log("🔥 [Backend] Login requested role:", requestedRole);
+
+  if (!idToken) {
+    return res.status(400).json({ message: "ID Token is required" });
+  }
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { email, uid, picture } = decodedToken;
+    // console.log("✅ [Backend] Token verified. Email:", email);
+
+    let userDoc = null;
+    let userData = null;
+    let role = "";
+    let collectionName = "";
+
+    // ✅ STRICT MODE: If role is provided, ONLY check that specific collection
+    if (requestedRole) {
+      if (requestedRole === "user") {
+        const userSnapshot = await db.collection("users").where("email", "==", email).get();
+        if (!userSnapshot.empty) {
+          userDoc = userSnapshot.docs[0];
+          userData = userDoc.data();
+          role = "user";
+        }
+      } else if (requestedRole === "provider") {
+        const providerSnapshot = await db.collection("serviceProviders").where("email", "==", email).get();
+        if (!providerSnapshot.empty) {
+          userDoc = providerSnapshot.docs[0];
+          userData = userDoc.data();
+          role = "provider";
+        }
+      } else if (requestedRole === "admin") {
+        const adminSnapshot = await db.collection("admins").where("email", "==", email).get();
+        if (!adminSnapshot.empty) {
+          userDoc = adminSnapshot.docs[0];
+          userData = userDoc.data();
+          role = "admin";
+        }
+      }
+
+      if (!userDoc) {
+        console.warn(`⚠️ [Backend] User not found in requested role: ${requestedRole}`);
+        return res.status(404).json({ message: `Account not found for role: ${requestedRole}. Please sign up.` });
+      }
+
+    } else {
+      // 🔄 LEGACY MODE: Fallback to finding user anywhere (search all collections)
+      // 1. Try to find user in 'users'
+      const userSnapshot = await db.collection("users").where("email", "==", email).get();
+      if (!userSnapshot.empty) {
+        userDoc = userSnapshot.docs[0];
+        userData = userDoc.data();
+        role = "user";
+      }
+
+      // 2. If not found, try 'serviceProviders'
+      if (!userDoc) {
+        const providerSnapshot = await db.collection("serviceProviders").where("email", "==", email).get();
+        if (!providerSnapshot.empty) {
+          userDoc = providerSnapshot.docs[0];
+          userData = userDoc.data();
+          role = "provider";
+        }
+      }
+
+      // 3. If still not found, try 'admins'
+      if (!userDoc) {
+        const adminSnapshot = await db.collection("admins").where("email", "==", email).get();
+        if (!adminSnapshot.empty) {
+          userDoc = adminSnapshot.docs[0];
+          userData = userDoc.data();
+          role = "admin";
+        }
+      }
+    }
+
+    // console.log("🔍 [Backend] User lookup. Found:", !!userDoc, "Role:", role);
+
+    if (!userDoc) {
+      console.warn("⚠️ [Backend] User not found in any collection.");
+      return res.status(404).json({ message: "User not found. Please sign up first." });
+    }
+
+    // Link Firebase UID if not already linked (optional but good for future)
+    if (!userData.firebaseUid) {
+      await userDoc.ref.update({ firebaseUid: uid });
+    }
+
+    // Generate Application Tokens
+    const { token, refreshToken } = generateTokens(userDoc.id, role);
+    // console.log("🎟️ [Backend] Generated Refresh Token for user:", userDoc.id);
+
+    // Set Cookie
+    const cookieOptions = getCookieOptions(req);
+    // console.log("🍪 [Backend] Setting Cookie with options:", cookieOptions);
+    res.cookie("refreshToken", refreshToken, cookieOptions);
+
+    return res.status(200).json({
+      message: "Login successful",
+      user: {
+        id: userDoc.id,
+        email: userData.email,
+        fullName: userData.fullName || userData.name,
+        role: role,
+        avatar: userData.avatar || picture || "",
+      },
+      token,
+      role,
+    });
+    // console.log("✅ [Backend] Login successful. Cookie set for:", email);
+    return response; // Just in case, but returning directly above. wait, this is inside async.
+    // Retaining original return structure:
+
+
+  } catch (error) {
+    // console.error("❌ [Backend] Firebase Login Error:", error);
+    return res.status(401).json({ message: "Invalid or expired token", error: error.message });
+  }
+};
+
+const signupWithFirebase = async (req, res) => {
+  const { idToken, role, fullName, phone } = req.body;
+
+  if (!idToken || !role) {
+    return res.status(400).json({ message: "ID Token and Role are required" });
+  }
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { email, uid, picture } = decodedToken;
+
+    // Check if user exists anywhere
+    const checks = await Promise.all([
+      db.collection("users").where("email", "==", email).get(),
+      db.collection("serviceProviders").where("email", "==", email).get(),
+      db.collection("admins").where("email", "==", email).get(),
+    ]);
+
+    if (checks.some((snap) => !snap.empty)) {
+      return res.status(400).json({ message: "User already exists with this email." });
+    }
+
+    // Create new user in Firestore
+    // Using Firebase UID as the document ID ensures 1:1 mapping and easier security rules later
+    // BUT typically this app uses auto-generated IDs. To keep it consistent with `registerNewUser`, we can generate one.
+    // However, knowing the UID is valuable. Let's use the UID as the ID for clarity if acceptable, 
+    // OR just store it. Given the existing code uses `newDocRef.id`, we'll stick to that style EXCEPT 
+    // it's cleaner to use UID if we are fully migrating. 
+    // **Decision**: Use UID as document ID for new Firebase users. It prevents duplicates naturally.
+
+    const collection = role === "user" ? "users" : (role === "provider" ? "serviceProviders" : "users");
+    // Note: Admin signup usually restricted.
+
+    // Safety check for role
+    if (!["user", "provider"].includes(role)) {
+      return res.status(400).json({ message: "Invalid role" });
+    }
+
+    const newUserRef = db.collection(collection).doc(uid); // Use UID as Doc ID
+
+    const newUserData = {
+      id: uid,
+      firebaseUid: uid,
+      fullName: fullName || email.split("@")[0],
+      email,
+      phone: phone || "",
+      role,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      avatar: picture || "",
+      isAlsoProvider: false,
+      isAlsoUser: false,
+    };
+
+    if (role === "provider") {
+      newUserData.isAlsoProvider = true;
+      newUserData.totalClients = 0;
+      newUserData.totalAppointments = 0;
+      newUserData.earnings = 0;
+      newUserData.ratings = [];
+      newUserData.ratingCount = 0;
+      newUserData.averageRating = 0;
+      newUserData.professions = [];
+      newUserData.acceptedBookings = [];
+      newUserData.acceptedOrders = [];
+      newUserData.hourlyRate = 0;
+      newUserData.skills = [];
+      newUserData.serviceAreas = [];
+    } else {
+      newUserData.isAlsoUser = true;
+      newUserData.bookings = [];
+      newUserData.orderIds = [];
+    }
+
+    await newUserRef.set(newUserData);
+
+    // Generate Tokens
+    const { token, refreshToken } = generateTokens(uid, role);
+
+    // Set Cookie
+    res.cookie("refreshToken", refreshToken, getCookieOptions(req));
+
+    return res.status(201).json({
+      message: "User registered successfully",
+      user: newUserData,
+      token,
+      role,
+    });
+
+  } catch (error) {
+    // console.error("Firebase Signup Error:", error);
+    return res.status(500).json({ message: "Signup failed", error: error.message });
+  }
+};
+
+
 module.exports = {
-  registerNewUser,
-  loginUserAccount,
   logout,
+  VerifyUser,
   BecomeProvider,
   BecomeUser,
   switchRole,
-  VerifyUser,
   getLoggedInProviderData,
   updateProviderProfile,
-  logoutUser,
+  updateUserProfile,
+  loginWithFirebase,
+  signupWithFirebase,
 };

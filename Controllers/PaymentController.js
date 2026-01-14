@@ -191,7 +191,7 @@ const cancelPayment = async (req, res) => {
             return error(res, 'Payment is not pending or in process. Status: ' + txData.status, 400);
         }
 
-        console.log(txData.paymentId);
+        // console.log(txData.paymentId);
         const cancelResponse = await PaymentService.cancelPayment(txData.paymentId, providerData.mp_access_token);
 
         if (['cancelled'].includes(cancelResponse.status)) {
@@ -340,7 +340,7 @@ const receiveWebhook = async (req, res) => {
 
         if (payment && payment.status === 'approved') {
             const bookingId = payment.external_reference;
-            console.log(`[PaymentController] Payment approved for Booking ID: ${bookingId}`);
+            // console.log(`[PaymentController] Payment approved for Booking ID: ${bookingId}`);
 
             // 1. Update Booking Status
             if (bookingId && bookingId !== "pending_booking") {
@@ -351,7 +351,7 @@ const receiveWebhook = async (req, res) => {
                     paymentId: payment.id,
                     paidAt: new Date().toISOString()
                 });
-                console.log(`[PaymentController] Booking ${bookingId} updated to 'pending'.`);
+                // console.log(`[PaymentController] Booking ${bookingId} updated to 'pending'.`);
             }
         }
 

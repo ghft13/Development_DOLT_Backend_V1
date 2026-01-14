@@ -1,4 +1,4 @@
-const { db,admin }=require("../Config/FireBase.js")
+const { db, admin } = require("../Config/FireBase.js")
 
 const getUserCounts = async (req, res) => {
   try {
@@ -112,7 +112,7 @@ const getAllBookingsWithStatus = async (req, res) => {
 
 const GetUserDetails = async (req, res) => {
   try {
-   
+
 
     const homeownerSnapshot = await db.collection("users").get();
 
@@ -244,4 +244,4 @@ const GetServiceProviderDetails = async (req, res) => {
 // };
 
 
-module.exports = { getUserCounts, getAllBookingsWithStatus, GetUserDetails,GetServiceProviderDetails };
+module.exports = { getUserCounts, getAllBookingsWithStatus, GetUserDetails, GetServiceProviderDetails };
