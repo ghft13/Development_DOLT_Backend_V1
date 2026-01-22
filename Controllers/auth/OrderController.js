@@ -1,5 +1,6 @@
 const { db, admin } = require("../../Config/FireBase.js");
 const { sendNotification } = require("../../Controllers/NotificationController");
+const { getFeeBreakdown } = require("../../Utils/feeCalculator.js");
 
 const createOrder = async (req, res) => {
     try {
@@ -74,13 +75,20 @@ const createOrder = async (req, res) => {
             });
 
             for (const [providerId, data] of Object.entries(ordersByProvider)) {
+                // ✅ Calculate fees on the subtotal
+                const feeData = getFeeBreakdown(data.subTotal);
+
                 const newDocRef = db.collection("orderBookings").doc();
                 const orderData = {
                     userid,
                     username,
                     details,
                     items: data.items,
-                    total_amount: data.subTotal,
+                    // ✅ Fee breakdown
+                    base_amount: feeData.base_amount,
+                    dolt_fee: feeData.dolt_fee,
+                    marketplace_charge: feeData.marketplace_charge,
+                    total_amount: feeData.total_amount,
                     payment_id: payment_id || null, // Might be updated later via webhook
                     payment_method: payment_method || "card",
                     checkoutGroupId, // Link orders together for payment

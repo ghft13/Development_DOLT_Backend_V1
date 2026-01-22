@@ -1,4 +1,5 @@
-const { db, admin } = require("../../Config/FireBase.js")
+const { db, admin } = require("../../Config/FireBase.js");
+const { getFeeBreakdown } = require("../../Utils/feeCalculator.js");
 
 const createBooking = async (req, res) => {
   try {
@@ -29,6 +30,12 @@ const createBooking = async (req, res) => {
       return res.status(400).json({ message: "All fields are required" });
     }
 
+    // ✅ Calculate fees if total_amount is provided
+    let feeData = {};
+    if (total_amount && total_amount > 0) {
+      feeData = getFeeBreakdown(total_amount);
+    }
+
     const bookingData = {
       user_id,
       service_id,
@@ -39,7 +46,11 @@ const createBooking = async (req, res) => {
       latitude: latitude || null,
       longitude: longitude || null,
       notes: notes || "",
-      total_amount: total_amount || 0,
+      // ✅ Fee breakdown (if total_amount provided)
+      base_amount: feeData.base_amount || total_amount || 0,
+      dolt_fee: feeData.dolt_fee || 0,
+      marketplace_charge: feeData.marketplace_charge || 0,
+      total_amount: feeData.total_amount || total_amount || 0,
       currency: currency || "USD",
       created_at: created_at
         ? new Date(created_at)
