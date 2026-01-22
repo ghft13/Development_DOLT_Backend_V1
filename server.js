@@ -29,7 +29,10 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
     "http://127.0.0.1:3001",
     "http://127.0.0.1:3000",
     "https://dolt-dashboard-clone.onrender.com",
-    "https://d0lt-getitdone-clone.onrender.com"
+    "https://d0lt-getitdone-clone.onrender.com",
+    "http://dashboard.d0lt.local:3001",
+    "http://main.d0lt.local:3000",
+
   ];
 
 // ✅ 2. MIDDLEWARE ORDER IS CRITICAL
@@ -38,8 +41,8 @@ app.use(cookieParser());
 
 // Global Request Logger
 app.use((req, res, next) => {
-  // console.log(`📡 [${req.method}] ${req.url} | Origin: ${req.headers.origin} | Host: ${req.hostname}`);
-  // console.log(`   Cookies:`, req.cookies);
+  console.log(`📡 [${req.method}] ${req.url} | Origin: ${req.headers.origin} | Host: ${req.hostname}`);
+  console.log(`   Cookies:`, req.cookies);
   next();
 });
 
@@ -100,7 +103,7 @@ app.use((req, res) => {
 
 // ✅ 9. START SERVER
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, "0.0.0.0", async () => {
+app.listen(PORT, async () => {
   try {
     await createDefaultAdmin();
     console.log(`✅ Server running on port ${PORT}`);

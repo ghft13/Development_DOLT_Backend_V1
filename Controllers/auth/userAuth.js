@@ -468,8 +468,8 @@ const updateUserProfile = async (req, res) => {
 
 const loginWithFirebase = async (req, res) => {
   const { idToken, role: requestedRole } = req.body;
-  // console.log("🔥 [Backend] Login initiated. Token length:", idToken?.length);
-  // console.log("🔥 [Backend] Login requested role:", requestedRole);
+  console.log("🔥 [Backend] Login initiated. Token length:", idToken?.length);
+  console.log("🔥 [Backend] Login requested role:", requestedRole);
 
   if (!idToken) {
     return res.status(400).json({ message: "ID Token is required" });
