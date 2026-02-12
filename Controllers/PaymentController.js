@@ -1,4 +1,4 @@
-const { db } = require('../Config/FireBase.js');
+const { db } =  require("../Config/FireBase.js")
 const PaymentService = require('../Services/PaymentService');
 
 /**

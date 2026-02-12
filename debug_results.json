@@ -1,0 +1,49 @@
+{
+  "id": "4nteeAlV2uuMnzcsg7ez",
+  "foundInDocName": [
+    {
+      "collection": "bookings",
+      "data": {
+        "user_id": "8DHD3JrHTbQpy9olK8LljLjgCyZ2",
+        "service_id": "49jwcoYYvx5WMZS0pRRc",
+        "status": "pending_payment",
+        "scheduled_date": "2026-01-30T11:13:00",
+        "completed_date": null,
+        "address": "qwerdd",
+        "latitude": null,
+        "longitude": null,
+        "notes": "",
+        "base_amount": 80,
+        "dolt_fee": 1.64,
+        "marketplace_charge": 4,
+        "total_amount": 85.64,
+        "currency": "USD",
+        "service_title": "General Cleaning",
+        "service_description": "Regular home cleaning including vacuuming, mopping, and dusting",
+        "user_name": "jayraj rajesh araj",
+        "user_email": "arajjayraj18@gmail.com",
+        "isBooked": false,
+        "isCancelled": false,
+        "updated_at": {
+          "_seconds": 1769481622,
+          "_nanoseconds": 474000000
+        },
+        "created_at": {
+          "_seconds": 1769481622,
+          "_nanoseconds": 474000000
+        }
+      }
+    }
+  ],
+  "foundInFields": [],
+  "availableCollections": [
+    "admins",
+    "bookings",
+    "orders",
+    "payments",
+    "products",
+    "serviceProviders",
+    "services",
+    "users"
+  ]
+}
