@@ -19,23 +19,43 @@ dotenv.config();
 
 const app = express();
 
-// ✅ 1. ALLOWED ORIGINS - Fetch from .env or default to localhost
+// ✅ 1. ALLOWED ORIGINS
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",")
   : [
     "http://localhost:3001",
     "http://localhost:3000",
     "http://localhost:5173",
-    "http://127.0.0.1:3001",
-    "http://127.0.0.1:3000",
     "https://dolt-dashboard-clone.onrender.com",
     "https://d0lt-getitdone-clone.onrender.com",
-    "http://dashboard.d0lt.local:3001",
-    "http://main.d0lt.local:3000",
-
   ];
 
-// ✅ 2. MIDDLEWARE ORDER IS CRITICAL
+// ✅ 2. CORS CONFIGURATION (Must be at the very top for Preflight requests)
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests without origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+
+    // Normalize origin by removing trailing slashes for safer comparison
+    const normalizedOrigin = origin.replace(/\/$/, "");
+    const isAllowed = allowedOrigins.some(o => o.replace(/\/$/, "") === normalizedOrigin);
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`❌ CORS blocked origin: ${origin}`);
+      callback(new Error("CORS not allowed"));
+    }
+  },
+  credentials: true, // ✅ CRITICAL: Allow credentials (cookies)
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 200, // For older browsers
+};
+
+app.use(cors(corsOptions));
+
+// ✅ 3. MIDDLEWARE ORDER IS CRITICAL
 // Parse cookies FIRST (before any routes)
 app.use(cookieParser());
 
@@ -50,24 +70,6 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// ✅ 3. CORS CONFIGURATION - Third
-const corsOptions = {
-  origin: (origin, callback) => {
-    // ✅ Allow requests without origin (like mobile apps or curl)
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.warn(`❌ CORS blocked origin: ${origin}`);
-      callback(new Error("CORS not allowed"));
-    }
-  },
-  credentials: true, // ✅ CRITICAL: Allow credentials (cookies)
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 200, // For older browsers
-};
-
-app.use(cors(corsOptions));
 
 // ✅ 4. STATIC FILES after middleware
 app.use("/uploads", express.static("uploads"));
