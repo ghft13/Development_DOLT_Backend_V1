@@ -20,15 +20,19 @@ dotenv.config();
 const app = express();
 
 // ✅ 1. ALLOWED ORIGINS
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim()) // ✅ Added .trim()
-  : [
+// Robust parsing: handles simple comma-separated lists AND JSON-like arrays ['url1', 'url2']
+const rawOrigins = process.env.ALLOWED_ORIGINS || "";
+const allowedOrigins = rawOrigins
+  .replace(/[\[\]'"]/g, "") // Remove [, ], ', and "
+  .split(",")
+  .map(o => o.trim())
+  .filter(o => o.length > 0)
+  .concat([
     "http://localhost:3001",
     "http://localhost:3000",
     "http://localhost:5173",
-    "https://dolt-dashboard-clone.onrender.com",
-    "https://d0lt-getitdone-clone.onrender.com",
-  ];
+  ]);
+
 
 // ✅ 2. SECURITY HEADERS & CORS (Must be at the very top)
 // Handle Cross-Origin-Opener-Policy for Firebase Popups
