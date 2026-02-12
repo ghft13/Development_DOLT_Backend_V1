@@ -21,7 +21,7 @@ const app = express();
 
 // ✅ 1. ALLOWED ORIGINS
 const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(",")
+  ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim()) // ✅ Added .trim()
   : [
     "http://localhost:3001",
     "http://localhost:3000",
@@ -30,34 +30,40 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
     "https://d0lt-getitdone-clone.onrender.com",
   ];
 
-// ✅ 2. CORS CONFIGURATION (Must be at the very top for Preflight requests)
+// ✅ 2. SECURITY HEADERS & CORS (Must be at the very top)
+// Handle Cross-Origin-Opener-Policy for Firebase Popups
+app.use((req, res, next) => {
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  next();
+});
+
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests without origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
 
-    // Normalize origin by removing trailing slashes for safer comparison
-    const normalizedOrigin = origin.replace(/\/$/, "");
+    // Normalize: Trim and remove trailing slash
+    const normalizedOrigin = origin.trim().replace(/\/$/, "");
     const isAllowed = allowedOrigins.some(o => o.replace(/\/$/, "") === normalizedOrigin);
 
     if (isAllowed) {
       callback(null, true);
     } else {
-      console.warn(`❌ CORS blocked origin: ${origin}`);
+      console.warn(`❌ CORS blocked: ${origin} (Normalized: ${normalizedOrigin})`);
       callback(new Error("CORS not allowed"));
     }
   },
-  credentials: true, // ✅ CRITICAL: Allow credentials (cookies)
+  credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 200, // For older browsers
+  optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
 
-// ✅ 3. MIDDLEWARE ORDER IS CRITICAL
-// Parse cookies FIRST (before any routes)
+// ✅ 3. MIDDLEWARE
 app.use(cookieParser());
+
 
 // Global Request Logger
 app.use((req, res, next) => {
