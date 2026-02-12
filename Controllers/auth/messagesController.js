@@ -1,4 +1,4 @@
-const { db, admin } = require("../Config/FireBase.js")
+const { db, admin } = require("../../Config/FireBase.js")
 const { sendNotification } = require("../NotificationController.js");
 
 const getProviderConversations = async (req, res) => {
